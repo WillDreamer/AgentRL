@@ -35,6 +35,8 @@ VAL_ONLY=False
 LOG_VAL_GENERATIONS=64
 OUTPUT_ACC_TO_FILE=False
 CONFIG_NAME=simpletir_trainer
+NNODES=1
+GPUS_PER_NODE=8
 
 
 # if resume is True, then set resume_mode to auto
@@ -260,7 +262,7 @@ PYTHONUNBUFFERED=1 python -m recipe.simpletir.main_simpletir \
     data.val_sample_size=$VAL_SAMPLE_SIZE \
     data.max_prompt_length=$MAX_PROMPT_LENGTH \
     data.max_response_length=$MAX_RESPONSE_LENGTH \
-    actor_rollout_ref.model.path=$MODEL_PATH/$MODEL_NAME \
+    actor_rollout_ref.model.path=$MODEL_NAME \
     actor_rollout_ref.actor.ppo_mini_batch_size=$PPO_MINI_BATCH_SIZE \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$PPO_MICRO_TOKEN \
     actor_rollout_ref.actor.grad_clip=$GRAD_CLIP \

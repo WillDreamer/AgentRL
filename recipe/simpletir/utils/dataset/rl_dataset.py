@@ -54,6 +54,7 @@ class RLCustomPromptDataset(RLHFDataset):
             parquet_files = [parquet_files]
 
         self.parquet_files = copy.deepcopy(parquet_files)
+        self.data_files = copy.deepcopy(parquet_files)  # use for resume
         self.original_parquet_files = copy.deepcopy(parquet_files)  # use for resume
         self.cache_dir = os.path.expanduser(cache_dir)
         self.tokenizer = tokenizer
@@ -71,6 +72,7 @@ class RLCustomPromptDataset(RLHFDataset):
         self.truncation = truncation
         self.sample_size = sample_size
         self.filter_overlong_prompts = filter_overlong_prompts
+        self.use_shm = False
 
         # whether to store the dataset in state_dict()
         # default not store

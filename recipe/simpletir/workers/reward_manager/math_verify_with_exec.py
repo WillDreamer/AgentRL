@@ -27,10 +27,11 @@ from recipe.simpletir.agent_utils import count_lines
 from recipe.simpletir.utils.reward_score import _default_compute_score
 from verl import DataProto
 
-if os.getenv("SANDBOX_ENDPOINT", None) is not None:
-    from sandbox.local_sandbox import parallel_sandbox
-else:
-    from sandbox.internal_sandbox import parallel_sandbox
+# if os.getenv("SANDBOX_ENDPOINT", None) is not None:
+#     from sandbox.local_sandbox import parallel_sandbox
+# else:
+#     from sandbox.internal_sandbox import parallel_sandbox
+from sandbox.local_sandbox import parallel_sandbox
 
 
 # Keep this outside the main wrapper function for clarity and efficiency.

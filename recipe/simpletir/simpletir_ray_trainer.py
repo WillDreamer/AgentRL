@@ -349,9 +349,7 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
         val_file_prefix = os.environ.get("DATA_PATH", "")
         for val_file in config.data.val_files:
             val_file = val_file.removeprefix(val_file_prefix + "/").split(".")[0]
-            self.validation_generations_logger[val_file] = ValidationGenerationsLogger(
-                val_file
-            )
+            self.validation_generations_logger[val_file] = ValidationGenerationsLogger()
 
         # define in-reward KL control
         # kl loss control currently not suppoorted
