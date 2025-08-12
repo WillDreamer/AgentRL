@@ -343,6 +343,7 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
         self.use_reference_policy = Role.RefPolicy in role_worker_mapping
         self.use_rm = Role.RewardModel in role_worker_mapping
         self.ray_worker_group_cls = ray_worker_group_cls
+        self.device_name="cuda"
 
         # register wandb generation logger
         self.validation_generations_logger = {}

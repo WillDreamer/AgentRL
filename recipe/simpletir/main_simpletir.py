@@ -73,6 +73,7 @@ def run_simpletir(config) -> None:
                     "TOKENIZERS_PARALLELISM": "true",
                     "NCCL_DEBUG": "WARN",
                     "VLLM_LOGGING_LEVEL": "WARN",
+                    "WANDB_API_KEY": "ba70fcbc92808cc7a1750dd80ac3908295e6854f",
                 }
             }
         )

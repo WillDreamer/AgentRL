@@ -11,8 +11,8 @@ MAX_OBS_LENGTH=256
 PPO_MINI_BATCH_SIZE=128
 PPO_MICRO_TOKEN=24000
 TOTAL_EPOCHS=100
-TRAIN_DATASET=("simplelr_math_35/train")
-VALID_DATASET=("simplelr_math_35/test" "deepscaler/aime" "deepscaler/aime25")
+TRAIN_DATASET=("/workspace/AgentRL/datasets/simplelr_math_35/train")
+VALID_DATASET=("/workspace/AgentRL/datasets/simplelr_math_35/test" "/workspace/AgentRL/datasets/deepscaler/aime" "/workspace/AgentRL/datasets/deepscaler/aime25")
 ROLLOUT_GPU_MEMORY_UTIL=0.75
 ACTOR_OPTIMIZER_OFFLOAD=False
 ACTOR_PARAMETER_OFFLOAD=False
@@ -37,7 +37,7 @@ OUTPUT_ACC_TO_FILE=False
 CONFIG_NAME=simpletir_trainer
 NNODES=1
 GPUS_PER_NODE=8
-
+RESUME=False
 
 # if resume is True, then set resume_mode to auto
 if [ "$RESUME" = "True" ]; then

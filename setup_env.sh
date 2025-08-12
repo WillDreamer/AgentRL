@@ -9,6 +9,7 @@ conda activate verl
 python3 -m pip install uv
 
 python3 -m uv pip install -e ".[sglang]"
+python3 -m uv pip install -e ".[vllm]"
 pip install --no-deps -e .
 python3 -m uv pip install flash-attn==2.7.4.post1 --no-build-isolation --no-deps
 python3 -m uv pip install -r ./requirements.txt
