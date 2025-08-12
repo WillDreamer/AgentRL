@@ -253,6 +253,12 @@ echo "CONFIG_NAME: $CONFIG_NAME"
 
 # Example of using the variables
 sleep 3
+
+export SANDBOX_ENDPOINT=http://127.0.0.1:12345/faas/sandbox/
+export WANDB_ENTITY="RL_Reasoning"
+export WANDB_PROMPT_VERSION="simpletir"
+export WANDB_PROJECT="${WANDB_ENTITY}_${WANDB_PROMPT_VERSION}"
+
 PYTHONUNBUFFERED=1 python -m recipe.simpletir.main_simpletir \
     --config-name $CONFIG_NAME \
     algorithm.adv_estimator=grpo \

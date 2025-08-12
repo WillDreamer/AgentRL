@@ -95,7 +95,8 @@ async def parallel_sandbox(
     * ``stdouts``: *stdout* text collected from the sandbox.
     * ``stderrs``: *stderr* text collected from the sandbox.
     """
-    endpoint = os.getenv("SANDBOX_ENDPOINT", None)
+    # endpoint = os.getenv("SANDBOX_ENDPOINT", None)
+    endpoint = 'http://127.0.0.1:12345/faas/sandbox/'
     assert endpoint is not None, "SANDBOX_ENDPOINT is not set"
     semaphore = asyncio.Semaphore(num_processes)
     if stdin_list is None:

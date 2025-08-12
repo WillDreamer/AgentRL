@@ -358,6 +358,7 @@ class AgentHelper:
         timeout: int = 5,
     ) -> Tuple[Dict, Dict]:
         """Run main LLM generation loop."""
+        #! 
         batch_size = gen_batch.batch["input_ids"].shape[0]
 
         self.timeout = timeout
@@ -398,6 +399,7 @@ class AgentHelper:
 
             # Generate responses for active batches
             if step != 0:
+                #! 只留下active_mask=true的
                 rollings_active = DataProto.from_dict(
                     {k: v[active_mask] for k, v in rollings.batch.items()}
                 )
@@ -428,6 +430,7 @@ class AgentHelper:
             responses_ids, responses_str = self._postprocess_responses(
                 gen_output.batch["responses"]
             )
+            breakpoint()
             responses_ids, responses_str = self.tensor_fn._example_level_pad(
                 responses_ids, responses_str, active_mask
             )
@@ -464,6 +467,7 @@ class AgentHelper:
             original_right_side = self._update_right_side(
                 original_right_side, responses_ids, next_obs_ids
             )
+            breakpoint()
 
         meta_info["turns_stats"] = turns_stats.tolist()
         meta_info["active_mask"] = active_mask.tolist()
