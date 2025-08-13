@@ -89,7 +89,7 @@ algorithm:
     kl_coef: 0.000
 
 trainer:
-  project_name: ragen_latest
+  project_name: webshop_rl
   experiment_name: test
   total_training_steps: 200
   validation_steps: 1 # validation instances = validation_steps * val_env_groups * group_size
