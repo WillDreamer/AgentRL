@@ -1,0 +1,19 @@
+# requirements.txt records the full set of dependencies for development
+gymnasium
+gymnasium[toy-text]
+gym
+gym_sokoban
+matplotlib
+anthropic
+together
+beautifulsoup4
+cleantext
+flask
+html2text
+rank_bm25
+pyserini
+faiss-cpu
+thefuzz
+gdown
+spacy
+rich

@@ -124,3 +124,6 @@ logs
 log
 outputs
 .history
+
+# third party
+webshop-minimal

@@ -43,8 +43,7 @@ bash set_conda.sh
 bash setup_env.sh
 
 # Install dependencies for specific tasks
-pip install -r requirements_xxx.txt
-
+pip install -r requirements_xxx.txts
 ```
 
 ## Easy Extension
@@ -88,6 +87,20 @@ python recipe/ragen/download_data.py
 
 ```
 bash train_ragen.sh
+```
+
+**Webshop**
+
+1. Install the additional dependecy
+
+```
+pip install -r requirements_webshop.txt
+```
+
+2. Build the webshop environments
+
+```
+bash recipe/webshop/setup_webshop.sh
 ```
 
 
