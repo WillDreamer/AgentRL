@@ -42,8 +42,21 @@ bash set_conda.sh
 # Install dependencies 
 bash setup_env.sh
 
+# Install dependencies for specific tasks
+pip install -r requirements_xxx.txt
+
 ```
 
+## Easy Extension
+
+- All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase.
+
+- Add specific dependencies to `requirements_xxx.txt`
+
+- Feel free to add the folder of the third-party tools, e.g., `AgentRL/sandbox` for code implementation.
+
+
+## Existing Support
 
 **Math+CI**
 
@@ -77,10 +90,6 @@ python recipe/ragen/download_data.py
 bash train_ragen.sh
 ```
 
-
-## Easy extension
-
-All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase.
 
 ## Awesome work for reference
 
