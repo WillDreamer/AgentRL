@@ -31,8 +31,6 @@
 ## 💻 Getting Started
 
 
-**Quickstart:**
-
 Our benchmark is based on `VeRL=0.4.0`, `torch=2.6.0`, and `vLLM=0.8.5`.
 
 ```
