@@ -24,3 +24,4 @@ packaging>=20.0
 uvicorn
 fastapi
 math-verify
+word2number

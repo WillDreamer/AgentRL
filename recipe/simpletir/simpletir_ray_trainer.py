@@ -350,6 +350,7 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
         val_file_prefix = os.environ.get("DATA_PATH", "")
         for val_file in config.data.val_files:
             val_file = val_file.removeprefix(val_file_prefix + "/").split(".")[0]
+            val_file = "/".join(val_file.split("/")[-2:])
             self.validation_generations_logger[val_file] = ValidationGenerationsLogger()
 
         # define in-reward KL control
@@ -720,7 +721,7 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
                     f.write(f"{outputs[i * 2 + 1]}\n\n")
             print(f"Accuracy results saved to {table_name}")
 
-        samples = list(zip(inputs, outputs, output_scores, avg_scores))
+        samples = list(zip(inputs, outputs, output_scores))
 
         # We no longer sort and shuffle here since the prompt in each inputs may be different
         # samples.sort(key=lambda x: x[0])  # Sort by input text
@@ -732,6 +733,7 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
         samples = samples[:generations_to_log]
 
         # Log to each configured logger
+        
         if table_name is not None:
             self.validation_generations_logger[table_name].log(
                 self.config.trainer.logger, samples, self.global_steps
@@ -1340,7 +1342,8 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
 
                             # Filter batch to keep only valid samples
                             batch = batch[valid_mask]
-                            batch = dataprotoitem_to_dataproto(batch)
+                            
+                            # batch = dataprotoitem_to_dataproto(batch)
 
                             valid_query_size = (
                                 batch.batch["input_ids"].shape[0]
@@ -1402,11 +1405,10 @@ class RaySimpleTIRTrainer(RayPPOTrainer):
                                     if query_size_mask[idx]:
                                         size_mask[sel_uid_mask] = True
                                 batch = batch[size_mask]
-                                batch = dataprotoitem_to_dataproto(batch)
+                                # batch = dataprotoitem_to_dataproto(batch)
 
                             assert (
-                                batch.batch["input_ids"].shape[0]
-                                == expected_input_ids_size
+                                batch.batch["input_ids"].shape[0] == expected_input_ids_size
                             ), (
                                 f"batch size is not equal to train_batch_size, which is {batch.batch['input_ids'].shape[0]} vs {expected_input_ids_size}"
                             )

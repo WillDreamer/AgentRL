@@ -78,6 +78,8 @@ trainer:
   start_clip_step: 50
   critic_warmup: 0
   logger: ['console','wandb']
+  project_name: simpletir
+  experiment_name: simpletir_math
 
 critic:
   ppo_micro_batch_size_per_gpu: 4

@@ -38,6 +38,7 @@ CONFIG_NAME=simpletir_trainer
 NNODES=1
 GPUS_PER_NODE=8
 RESUME=False
+PROJECT_NAME=simpletir_math
 
 # if resume is True, then set resume_mode to auto
 if [ "$RESUME" = "True" ]; then
@@ -187,7 +188,6 @@ if [ ${#TRAIN_DATASET[@]} -gt 0 ]; then
   done
 fi
 
-RUN_NAME+="$train_dataset_str"
 RUN_NAME+="_$MODEL_NAME"
 
 echo "RUN_NAME: $RUN_NAME"
