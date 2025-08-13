@@ -403,11 +403,13 @@ class AgentHelper:
                 rollings_active = DataProto.from_dict(
                     {k: v[active_mask] for k, v in rollings.batch.items()}
                 )
-                rollings_active.meta_info["n"] = 1
+                rollings_active.meta_info["do_sample"] = True
+                rollings_active.meta_info["validate"] = True
             else:
                 rollings_active = rollings
                 if self.config.rollout_n == 1:
-                    rollings_active.meta_info["n"] = 1
+                    rollings_active.meta_info["do_sample"] = True
+                    rollings_active.meta_info["validate"] = True
                 else:
                     repeated_rollings_dict = {}
                     for k, v in rollings.batch.items():
@@ -430,7 +432,6 @@ class AgentHelper:
             responses_ids, responses_str = self._postprocess_responses(
                 gen_output.batch["responses"]
             )
-            breakpoint()
             responses_ids, responses_str = self.tensor_fn._example_level_pad(
                 responses_ids, responses_str, active_mask
             )
@@ -467,7 +468,6 @@ class AgentHelper:
             original_right_side = self._update_right_side(
                 original_right_side, responses_ids, next_obs_ids
             )
-            breakpoint()
 
         meta_info["turns_stats"] = turns_stats.tolist()
         meta_info["active_mask"] = active_mask.tolist()
