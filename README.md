@@ -8,7 +8,9 @@
 
 <h1 style="text-align: center;">Agentic RL Arena</h1>
 
-Our benchmark will analyze the existing sufferings of Agentic RL, including tool-intergrated reasoning and multi-turn RL. 
+- Our benchmark profoundly analyzes the existing sufferings of Agentic RL, including tool-intergrated and multi-turn RL.
+- Our benchmark comprehensively compares existing Agentic RL algorithms and their breakthroughs.
+- Our benchmark universally provides experimental results and findings on multiple ARC tasks.
 
 
 </p>
@@ -16,12 +18,15 @@ Our benchmark will analyze the existing sufferings of Agentic RL, including tool
 
 ## Key Features
 
-- Support multi-turn Math+Code Interpreter
-- Support multi-turn game
+- Support Multi-turn Math+Code Interpreter Agents
+- Support Multi-turn Game Agents
+- Support Multi-turn Shopping Agents
 
 ## Upcoming Features and Changes
 
-- Support WebAgent
+- Support WebAgents
+- Support Multimodal Agents
+- Support Software Enginnering Agents
 
 ## Getting Started
 
