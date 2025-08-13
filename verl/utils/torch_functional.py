@@ -52,6 +52,18 @@ def gather_from_labels(data, label):
     return output
 
 
+@contextmanager
+def check_cuda_is_available():
+    """
+    Some modules must be imported after CUDA is initialized. Such as sglang's sharding manager.
+
+    This context manager checks if CUDA is available and raises an error if it is not.
+    """
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA must be initialized before importing this module.")
+
+    yield
+
 def logprobs_from_logits(logits, labels, inplace_backward=True):
     """
     Compute per-token log-probabilities for the given labels.

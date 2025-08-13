@@ -25,3 +25,10 @@ uvicorn
 fastapi
 math-verify
 word2number
+gymnasium
+gymnasium[toy-text]
+gym
+gym_sokoban
+matplotlib
+anthropic
+together

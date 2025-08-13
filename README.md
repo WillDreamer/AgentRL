@@ -52,6 +52,27 @@ bash setup_env.sh
 bash train_simpletir.sh
 ```
 
+**OpenAI Game**
+
+1. Install the additional dependecy
+
+```
+pip install -r requirements_ragen.txt
+```
+
+2. Download the data
+
+```
+python recipe/ragen/download_data.py
+```
+
+3. Run the demo code with:
+
+```
+bash train_ragen.sh
+```
+
+
 ## Easy extension
 
 All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase.
