@@ -49,7 +49,7 @@ pip install -r requirements_xxx.txt
 
 ## Easy Extension
 
-- All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase.
+- All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase. The folder under `recipe` can represent either a method for different tasks or a series methods for one task.
 
 - Add specific dependencies to `requirements_xxx.txt`
 
