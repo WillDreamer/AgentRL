@@ -46,6 +46,15 @@ bash setup_env.sh
 
 2. The training datasets are Math3-5 from SimpleRL and Deepscaler in `datasets`.
 
+3. Run the demo code with:
+
+```
+bash train_simpletir.sh
+```
+
+## Easy extension
+
+All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase.
 
 ## Awesome work for reference
 
