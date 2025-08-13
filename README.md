@@ -57,7 +57,7 @@ pip install -r requirements_xxx.txts
 
 ## 🚀 Existing Support
 
-**Math+CI**
+> **Math+CI**
 
 1. We use Sandbox Fusion as an asynchronous code interpreter. You can follow the [Guidance](AgentRL/sandbox/README.md) to run the CI.
 
@@ -69,7 +69,7 @@ pip install -r requirements_xxx.txts
 bash train_simpletir.sh
 ```
 
-**OpenAI Game**
+> **OpenAI Game**
 
 1. Install the additional dependecy
 
@@ -89,7 +89,7 @@ python recipe/ragen/download_data.py
 bash train_ragen.sh
 ```
 
-**Webshop**
+> **Shopping Agents**
 
 1. Install the additional dependecy
 
@@ -101,6 +101,12 @@ pip install -r requirements_webshop.txt
 
 ```
 bash recipe/webshop/setup_webshop.sh
+```
+
+3. Run the demo code with:
+
+```
+bash train_webshop.sh
 ```
 
 
