@@ -6,7 +6,7 @@
 </div>
 
 
-<h1 style="text-align: center;">Agentic RL Arena</h1>
+<h1 style="text-align: center;"> 🤖 Agentic RL Arena </h1>
 
 - Our benchmark profoundly analyzes the existing sufferings of Agentic RL, including tool-intergrated and multi-turn RL.
 - Our benchmark comprehensively compares existing Agentic RL algorithms and their breakthroughs.
@@ -16,19 +16,19 @@
 </p>
 
 
-## Key Features
+### 🔥 Key Features
 
 - Support Multi-turn Math+Code Interpreter Agents
 - Support Multi-turn Game Agents
 - Support Multi-turn Shopping Agents
 
-## Upcoming Features and Changes
+### 🔧 Upcoming Features and Changes
 
 - Support WebAgents
 - Support Multimodal Agents
 - Support Software Enginnering Agents
 
-## Getting Started
+## 💻 Getting Started
 
 
 **Quickstart:**
@@ -46,7 +46,7 @@ bash setup_env.sh
 pip install -r requirements_xxx.txts
 ```
 
-## Easy Extension
+## 🌊 Easy Extension
 
 - All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase. The folder under `recipe` can represent either a method for different tasks or a series methods for one task.
 
@@ -55,7 +55,7 @@ pip install -r requirements_xxx.txts
 - Feel free to add the folder of the third-party tools, e.g., `AgentRL/sandbox` for code implementation.
 
 
-## Existing Support
+## 🚀 Existing Support
 
 **Math+CI**
 
@@ -104,7 +104,7 @@ bash recipe/webshop/setup_webshop.sh
 ```
 
 
-## Awesome work for reference
+## 🎆 Awesome work for reference
 
 - [TinyZero](https://github.com/Jiayi-Pan/TinyZero): a reproduction of **DeepSeek R1 Zero** recipe for reasoning tasks ![GitHub Repo stars](https://img.shields.io/github/stars/Jiayi-Pan/TinyZero)
 - [SkyThought](https://github.com/NovaSky-AI/SkyThought): RL training for Sky-T1-7B by NovaSky AI team. ![GitHub Repo stars](https://img.shields.io/github/stars/NovaSky-AI/SkyThought)
