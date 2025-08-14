@@ -13,7 +13,7 @@ git clone https://github.com/ZihanWang314/webshop-minimal.git
 
 # webshop installation, model loading
 pip install -e webshop-minimal/ --no-dependencies
-pip install -U "numpy==2.2.6" "scipy>=1.13"
+pip install -U "numpy==2.3.2" "scipy==1.16.1"
 python -m spacy download en_core_web_sm
 python -m spacy download en_core_web_lg
 

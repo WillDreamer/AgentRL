@@ -40,6 +40,8 @@ bash set_conda.sh
 # Install dependencies 
 bash setup_env.sh
 
+conda activate verl
+
 # Install dependencies for specific tasks
 pip install -r requirements_xxx.txts
 ```
