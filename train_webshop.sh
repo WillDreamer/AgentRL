@@ -2,7 +2,7 @@ set -e
 
 TASK_NAME=_webshop
 FILTER_RATIO=0.5
-MODEL=Qwen/Qwen2.5-3B-Instruct
+MODEL=Qwen/Qwen3-4B-Instruct-2507
 
 python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     model_path=$MODEL \
