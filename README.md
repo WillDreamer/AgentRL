@@ -59,7 +59,7 @@ pip install -r requirements_xxx.txts
 
 > **Math+CI**
 
-1. We use Sandbox Fusion as an asynchronous code interpreter. You can follow the [Guidance](AgentRL/sandbox/README.md) to run the CI.
+1. We use Sandbox Fusion as an asynchronous code interpreter. You can follow the [Guidance](sandbox/README.md) to run the CI.
 
 2. The training datasets are Math3-5 from SimpleRL and Deepscaler in `datasets`.
 
