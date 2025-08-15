@@ -14,7 +14,7 @@
 - Our benchmark comprehensively compares existing Agentic RL algorithms and their breakthroughs.
 - Our benchmark universally provides experimental results and findings on multiple ARC tasks.
 
-<p align="center"><img src="public/arl.png" width="800px" alt="Agentic RL Arena Framework" /></p>
+<p align="center"><img src="public/ARL.png" width="800px" alt="Agentic RL Arena Framework" /></p>
 <p align="center" style="font-size: 16px; max-width: 800px; margin: 0 auto;">
 Overview of our framework
 </p>
