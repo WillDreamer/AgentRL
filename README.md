@@ -1,6 +1,6 @@
 <div align="center">
  👋 Hi, everyone! 
-    We will tell the world open-source agentic RL is suffering!
+    We will tell the world open-source agentic RL area is suffering!
     <br>
     <br>
 </div>
@@ -8,122 +8,109 @@
 
 <h1 style="text-align: center;"> 🤖 Agentic RL Arena </h1>
 
+
+<p align="center"><img src="public/ARL.png" width="800px" alt="Agentic RL Arena Framework" /></p>
+<p align="center" style="font-size: 16px; max-width: 800px; margin: 0 auto;">
+Figure 1: Overview of our framework
+</p>
+
 ## Our Framework Design
 
 - Our benchmark profoundly analyzes the existing sufferings of Agentic RL, including tool-intergrated and multi-turn RL.
 - Our benchmark comprehensively compares existing Agentic RL algorithms and their breakthroughs.
 - Our benchmark universally provides experimental results and findings on multiple ARC tasks.
 
-<p align="center"><img src="public/ARL.png" width="800px" alt="Agentic RL Arena Framework" /></p>
-<p align="center" style="font-size: 16px; max-width: 800px; margin: 0 auto;">
-Overview of our framework
-</p>
-
 ### 🔥 Key Features
 
-- Support Multi-turn Math+Code Interpreter Agents
-- Support Multi-turn Game Agents
-- Support Multi-turn Shopping Agents
+- ✅ Support Multi-turn Math+Code Interpreter Agents
+- ✅ Support Multi-turn Game Agents
+- ✅ Support Multi-turn Shopping Agents
 
 ### 🔧 Upcoming Features and Changes
 
-- Support WebAgents
-- Support Multimodal Agents
-- Support Software Enginnering Agents
+- ➡️ Support WebAgents
+- ➡️ Support Multimodal Agents
+- ➡️ Support Software Enginnering Agents
 
-## 💻 Getting Started
+## 💡 Getting Started
 
 
-Our benchmark is based on `VeRL=0.4.0`, `torch=2.6.0`, and `vLLM=0.8.5`.
+Our benchmark is based on the following main dependencies:
 
+```python
+Python=3.11, VeRL=0.4.0, torch=2.6.0, and vLLM=0.8.5
 ```
-# Install conda
+
+You can install other requirements as follows:
+``` bash
+# Install conda (Optional if conda exists)
 bash set_conda.sh
 
-# Install dependencies 
+# Install foundational dependencies 
 bash setup_env.sh
 
-conda activate verl
-
 # Install dependencies for specific tasks
+conda activate verl
 pip install -r requirements_xxx.txts
 ```
 
 ## 🌊 Easy Extension
 
-- All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase. The folder under `recipe` can represent either a method for different tasks or a series methods for one task. You can refer to [Easy Extension](docs/extension.md) for example.
+🔹 All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase. The folder under `recipe` can represent either a method for different tasks or a series methods for one task. You can refer to [Easy Extension](docs/extension.md) for examples.
 
-- Add specific dependencies to `requirements_xxx.txt`
+🔹 Add specific dependencies to `requirements_xxx.txt`
 
-- Feel free to add the folder of the third-party tools, e.g., `AgentRL/sandbox` for code implementation.
+🔹 Feel free to add the folder of the third-party tools, e.g., `AgentRL/sandbox` for code implementation.
 
 
 ## 🚀 Existing Support
 
-> **Math+CI**
+> ### 🧮 **Math+CI**
+
 
 1. We use Sandbox Fusion as an asynchronous code interpreter. You can follow the [Guidance](sandbox/README.md) to run the CI.
 
 2. The training datasets are Math3-5 from SimpleRL and Deepscaler in `datasets`.
 
-3. Run the demo code with:
-
-```
+```bash
+# 3. Run the demo code with:
 bash train_simpletir.sh
 ```
 
-> **OpenAI Game**
+> ### 🎮 **OpenAI Game**
 
-1. Install the additional dependecy
-
-```
+```python
+# 1. Install the additional dependecy
 conda activate verl
 pip install -r requirements_ragen.txt
-```
 
-2. Download the data
-
-```
+# 2. Download the data
 python recipe/ragen/download_data.py
-```
 
-3. Run the demo code with:
-
-```
+# 3. Run the demo code with:
 bash train_ragen.sh
 ```
 
-> **Shopping Agents**
+> ### 🛒 **Shopping Agents**
 
-
-1. Build the webshop environments
-
-```
+```bash
+# 1. Build the webshop environments
 bash recipe/webshop/setup_webshop.sh
-```
 
-2. Run the demo code with:
-
-```
+# 2. Run the demo code with:
 bash train_webshop.sh
 ```
 
-> **Search Agents**
+> ### 🕸️ **Search Agents**
 
-1. Build the RAG server environments
-
-```
+```bash
+#! 1. Build the RAG server environments
 bash recipe/search_r1/setup_search.sh
-```
 
-2. Run the RAG Server: Before running the bash script, modify the parameters in launch.sh (`file_path` is the storage location of the corpus, `retriever` is the local path of the model intfloat/e5-base-v2)
-```
+#!2. Run the RAG Server: Before running the bash script, modify the parameters in launch.sh (`file_path` is the storage location of the corpus, `retriever` is the local path of the model intfloat/e5-base-v2)
 bash recipe/search_r1/rag_server/launch.sh
-```
 
-3. Run the demo code with:
-
-```
+# 3. Run the demo code with:
 bash train_search.sh
 ```
 
