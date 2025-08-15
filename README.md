@@ -77,6 +77,7 @@ bash train_simpletir.sh
 1. Install the additional dependecy
 
 ```
+conda activate verl
 pip install -r requirements_ragen.txt
 ```
 
@@ -94,19 +95,14 @@ bash train_ragen.sh
 
 > **Shopping Agents**
 
-1. Install the additional dependecy
 
-```
-pip install -r requirements_webshop.txt
-```
-
-2. Build the webshop environments
+1. Build the webshop environments
 
 ```
 bash recipe/webshop/setup_webshop.sh
 ```
 
-3. Run the demo code with:
+2. Run the demo code with:
 
 ```
 bash train_webshop.sh
