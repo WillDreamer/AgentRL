@@ -257,7 +257,7 @@ sleep 3
 export SANDBOX_ENDPOINT=http://127.0.0.1:12345/faas/sandbox/
 export WANDB_ENTITY="RL_Reasoning"
 export WANDB_PROMPT_VERSION="simpletir"
-export WANDB_PROJECT="${WANDB_ENTITY}_${WANDB_PROMPT_VERSION}"
+export WANDB_PROJECT="${WANDB_PROMPT_VERSION}"
 
 WANDB_API_KEY="ba70fcbc92808cc7a1750dd80ac3908295e6854f" # Modify your wandb key
 # ============================ Preparation ============================

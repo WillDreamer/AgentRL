@@ -3,7 +3,7 @@ export DATA_DIR='data/nq_search'
 
 export WANDB_ENTITY="RL_Reasoning"
 export WANDB_PROMPT_VERSION="Search-R1"
-export WANDB_PROJECT="${WANDB_ENTITY}_${WANDB_PROMPT_VERSION}"
+export WANDB_PROJECT="${WANDB_PROMPT_VERSION}"
 
 WANDB_API_KEY="ba70fcbc92808cc7a1750dd80ac3908295e6854f" # Modify your wandb key
 # ============================ Preparation ============================
@@ -63,6 +63,7 @@ PYTHONUNBUFFERED=1 python3 -m recipe.search_r1.main_search \
     actor_rollout_ref.rollout.log_prob_micro_batch_size=128 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
+    actor_rollout_ref.rollout.mode=sync \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=128 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
@@ -72,7 +73,7 @@ PYTHONUNBUFFERED=1 python3 -m recipe.search_r1.main_search \
     actor_rollout_ref.rollout.n_agent=5 \
     actor_rollout_ref.rollout.temperature=1 \
     actor_rollout_ref.actor.state_masking=true \
-    trainer.logger=['wandb'] \
+    trainer.logger=['wandb','console] \
     +trainer.val_only=false \
     trainer.val_before_train=true \
     trainer.default_hdfs_dir=null \
