@@ -8,13 +8,16 @@
 
 <h1 style="text-align: center;"> 🤖 Agentic RL Arena </h1>
 
+## Our Framework Design
+
 - Our benchmark profoundly analyzes the existing sufferings of Agentic RL, including tool-intergrated and multi-turn RL.
 - Our benchmark comprehensively compares existing Agentic RL algorithms and their breakthroughs.
 - Our benchmark universally provides experimental results and findings on multiple ARC tasks.
 
-
+<p align="center"><img src="public/arl.pdf" width="800px" alt="StarPO Framework" /></p>
+<p align="center" style="font-size: 16px; max-width: 800px; margin: 0 auto;">
+Overview of our framework
 </p>
-
 
 ### 🔥 Key Features
 
