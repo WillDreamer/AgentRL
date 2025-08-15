@@ -38,7 +38,7 @@ Figure 1: Overview of our framework
 Our benchmark is based on the following main dependencies:
 
 ```python
-Python=3.11, VeRL=0.4.0, torch=2.6.0, and vLLM=0.8.5
+Python=3.11, VeRL=0.4.0, PyTorch=2.6.0, and vLLM=0.8.5
 ```
 
 You can install other requirements as follows:
