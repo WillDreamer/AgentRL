@@ -259,6 +259,14 @@ export WANDB_ENTITY="RL_Reasoning"
 export WANDB_PROMPT_VERSION="simpletir"
 export WANDB_PROJECT="${WANDB_ENTITY}_${WANDB_PROMPT_VERSION}"
 
+WANDB_API_KEY="ba70fcbc92808cc7a1750dd80ac3908295e6854f" # Modify your wandb key
+# ============================ Preparation ============================
+# Login to WandB (if API key is provided)
+if [ "$WANDB_API_KEY" != "" ]; then
+    wandb login --relogin $WANDB_API_KEY
+    export WANDB_DIR=${SAVE_PATH}
+fi
+
 PYTHONUNBUFFERED=1 python -m recipe.simpletir.main_simpletir \
     --config-name $CONFIG_NAME \
     algorithm.adv_estimator=grpo \

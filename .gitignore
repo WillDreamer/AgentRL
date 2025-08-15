@@ -126,4 +126,5 @@ outputs
 .history
 
 # third party
-webshop-minimal
+webshop-minimal/
+rag_server/

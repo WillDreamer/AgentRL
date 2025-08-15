@@ -51,7 +51,7 @@ pip install -r requirements_xxx.txts
 
 ## 🌊 Easy Extension
 
-- All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase. The folder under `recipe` can represent either a method for different tasks or a series methods for one task.
+- All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase. The folder under `recipe` can represent either a method for different tasks or a series methods for one task. You can refer to [Easy Extension](docs/extension.md) for example.
 
 - Add specific dependencies to `requirements_xxx.txt`
 
@@ -106,6 +106,25 @@ bash recipe/webshop/setup_webshop.sh
 
 ```
 bash train_webshop.sh
+```
+
+> **Search Agents**
+
+1. Build the RAG server environments
+
+```
+bash recipe/search_r1/setup_search.sh
+```
+
+2. Run the RAG Server: Before running the bash script, modify the parameters in launch.sh (`file_path` is the storage location of the corpus, `retriever` is the local path of the model intfloat/e5-base-v2)
+```
+bash recipe/search_r1/rag_server/launch.sh
+```
+
+3. Run the demo code with:
+
+```
+bash train_search.sh
 ```
 
 
