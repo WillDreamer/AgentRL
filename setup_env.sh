@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 初始化 conda（source conda 的 profile）
-eval "$($HOME/miniconda3/bin/conda shell.bash hook)"
+eval "$(conda shell.bash hook)"
 
 conda create -n verl python==3.11 -y
 conda init
