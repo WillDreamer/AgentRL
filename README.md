@@ -74,6 +74,7 @@ pip install -r requirements_xxx.txts
 
 ```bash
 # 3. Run the demo code with:
+conda activate verl
 bash train_simpletir.sh
 ```
 
@@ -98,6 +99,7 @@ bash train_ragen.sh
 bash recipe/webshop/setup_webshop.sh
 
 # 2. Run the demo code with:
+conda activate verl
 bash train_webshop.sh
 ```
 
@@ -107,7 +109,7 @@ bash train_webshop.sh
 #! 1. Build the RAG server environments
 bash recipe/search_r1/setup_search.sh
 
-#!2. Run the RAG Server: Before running the bash script, modify the parameters in launch.sh (`file_path` is the storage location of the corpus, `retriever` is the local path of the model intfloat/e5-base-v2)
+#! 2. Run the RAG Server: Before running the bash script, modify the parameters in launch.sh (`file_path` is the storage location of the corpus, `retriever` is the local path of the model intfloat/e5-base-v2)
 bash recipe/search_r1/rag_server/launch.sh
 
 # 3. Run the demo code with:
