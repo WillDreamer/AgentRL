@@ -7,7 +7,7 @@ from recipe.webshop.trainer.agent_trainer import RayAgentTrainer
 
 import ray
 import hydra
-import os
+import os, json, time, socket, uuid, atexit
 from verl import DataProto
 import torch
 import numpy as np
@@ -15,80 +15,395 @@ from recipe.webshop.utils import register_resolvers
 register_resolvers()
 import sys
 
+
+def _to_bool(x: str) -> bool:
+    return str(x).lower() in {"1", "true", "t", "yes", "y", "on"}
+
 class DummyRewardManager():
-    """The reward manager.
+    """
+    - 每过 ROLLOUT_SAVE_EVERY_STEPS 个 step 批量保存到“单独文件”
+    - 文件名包含本批 step 区间：rollouts_s{start}_e{end}_rank{...}_pid{...}_{host}.jsonl
+    - 若传入 compute_score，则用它算 reward；否则优先 rm_scores（均值），再回退 non_tensor_batch['reward']
     """
 
     def __init__(self, tokenizer, num_examine, compute_score=None) -> None:
         self.tokenizer = tokenizer
-        self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
+        self.num_examine = num_examine
         self.compute_score = compute_score
 
-    def __call__(self, data: DataProto, return_dict=False):
-        """We will expand this function gradually based on the available datasets"""
+        # —— 步计数 + 缓冲 —— #
+        self.step = 0
+        self._buf = []
+        self._buf_start_step = 1  # 当前缓冲的起始 step
+        self.save_every_steps = int(os.getenv("ROLLOUT_SAVE_EVERY_STEPS", 5))  # “每过 N 步”
+        env_flag = os.getenv("ROLLOUT_DUMP_ENABLE")
+        self.save_rollout = _to_bool(env_flag) if env_flag is not None else False
 
-        # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
-        if 'rm_scores' in data.batch.keys():
-            if return_dict:
-                return {
-                    "reward_tensor": data.batch['rm_scores'],
-                }
-            else:
-                return data.batch['rm_scores']
+        # —— 输出目录（默认当前工作目录/rollouts，Hydra 下就是当次 run 目录） —— #
+        out_dir = os.environ.get("ROLLOUT_DUMP_DIR", os.path.join(os.getcwd(), "rollouts"))
+        os.makedirs(out_dir, exist_ok=True)
+        self._out_dir = out_dir
+
+        # —— 进程标识 —— #
+        self._host = socket.gethostname()
+        self._rank = os.environ.get("RANK") or os.environ.get("LOCAL_RANK") or "0"
+        self._pid  = os.getpid()
+
+        print(f"[rollout-dump] enabled={self.save_rollout}, every={self.save_every_steps} steps")
+        print(f"[rollout-dump] dir={self._out_dir}")
+
+        # 退出兜底：写掉剩余缓冲
+        atexit.register(self._flush, force=True)
+
+    # === 当前分片文件名（按 step 分片，单独保存） ===
+    def _current_file(self):
+        return os.path.join(
+            self._out_dir,
+            f"rollouts_s{self._buf_start_step:06d}_e{self.step:06d}_"
+            f"rank{self._rank}_pid{self._pid}_{self._host}.jsonl"
+        )
+
+    # === 缓冲写入 ===
+    def _dump_one(self, rec: dict):
+        if not self.save_rollout:
+            return
+        self._buf.append(rec)
+
+    # === 批量落盘（生成独立文件），并滚动到下一个区间 ===
+    def _flush(self, force: bool=False):
+        if not self.save_rollout or not self._buf:
+            # 无论写没写，都把下个区间的起点设成 step+1（防止命名错乱）
+            self._buf_start_step = self.step + 1
+            return
+        path = self._current_file()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("\n".join(json.dumps(r, ensure_ascii=False) for r in self._buf))
+            f.write("\n")
+        self._buf.clear()
+        # 下个分片从下一步开始
+        self._buf_start_step = self.step + 1
+
+    def __call__(self, data: "DataProto", return_dict=False):
+        has_rm = "rm_scores" in data.batch
 
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
-
         all_scores = []
-
         already_print_data_sources = {}
 
         for i in range(len(data)):
-            data_item = data[i]  # DataProtoItem
+            item = data[i]
 
-            prompt_ids = data_item.batch['prompts']
+            # —— 1) 有效长度（左填充假设） ——
+            seq_ids = item.batch["input_ids"]
+            attn = item.batch['attention_mask']
+            T = seq_ids.shape[-1]
+            valid_seq_len = int(attn.sum().item())
 
-            prompt_length = prompt_ids.shape[-1]
+            if "loss_mask" in item.batch:
+                resp_len = int(item.batch["loss_mask"][i].sum().item())       # ★ 注意加 [i]
+            elif "response_mask" in item.batch:
+                resp_len = int(item.batch["response_mask"][i].sum().item())
+            else:
+                resp_len = int((item.batch["responses"][i] != 0).sum().item())
 
-            valid_prompt_length = data_item.batch['attention_mask'][:prompt_length].sum()
-            valid_prompt_ids = prompt_ids[-valid_prompt_length:]
+            resp_len = max(min(resp_len, valid_seq_len), 0)
+            prompt_len = max(valid_seq_len - resp_len, 0)
 
-            response_ids = data_item.batch['responses']
-            valid_response_length = data_item.batch['attention_mask'][prompt_length:].sum()
-            valid_response_ids = response_ids[:valid_response_length]
+            start_valid = T - valid_seq_len
+            prompt_end  = T - resp_len
+            valid_prompt_ids = seq_ids[start_valid:prompt_end]
+            valid_resp_ids   = seq_ids[prompt_end:T]
 
-            # decode
-            sequences = torch.cat((valid_prompt_ids, valid_response_ids))
-            sequences_str = self.tokenizer.decode(sequences)
+            # —— 2) 解码 ——
+            prompt_str = self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
+            response_str = self.tokenizer.decode(valid_resp_ids,  skip_special_tokens=True)
+            sequences_str = self.tokenizer.decode(
+                torch.cat((valid_prompt_ids, valid_resp_ids)),
+                skip_special_tokens=True
+            )
 
-            score = data_item.non_tensor_batch['reward']
-            score = float(score)
- 
-            reward_tensor[i, valid_response_length - 1] = score
+            # —— 3) 元信息 ——
+            nt = item.non_tensor_batch or {}
+            data_source  = nt.get("data_source", "default")
+            ground_truth = nt.get("ground_truth")
+            sample_index = nt.get("sample_index")
+            rollout_n    = nt.get("rollout_n")
+
+            # —— 4) 标量 reward（优先 rm_scores 的均值；也可改成 last/mean/sum 策略） ——
+            if self.compute_score is not None:
+                try:
+                    score = float(self.compute_score(data_source, response_str, ground_truth, extra_info=nt))
+                except TypeError:
+                    score = float(self.compute_score(data_source, response_str, ground_truth))
+            elif has_rm:
+                score = float(data.batch['rm_scores'][i].mean().item())
+            else:
+                score = float(nt['reward']) if 'reward' in nt else 0.0
+
+            if resp_len > 0:
+                reward_tensor[i, resp_len - 1] = score
             all_scores.append(score)
 
-            # Get data_source from data_item if available, otherwise use a default value
-            data_source = data_item.non_tensor_batch.get('data_source', 'default')
-            
-            if data_source not in already_print_data_sources:
-                already_print_data_sources[data_source] = 0
-
-            if already_print_data_sources[data_source] < self.num_examine:
-                already_print_data_sources[data_source] += 1
-                print(sequences_str)
-        
-        print(f"[DEBUG] all_scores: {all_scores}")
-        print(f"[DEBUG] all_scores shape: {np.array(all_scores).shape}")
-        print(f"[DEBUG] all_scores mean: {np.mean(all_scores)}")
-        print(f"[DEBUG] all_scores max: {np.max(all_scores)}")
-        print(f"[DEBUG] all_scores min: {np.min(all_scores)}")
-        print(f"[DEBUG] all_scores std: {np.std(all_scores)}")
-
-        if return_dict:
-            return {
-                "reward_tensor": reward_tensor,
+            # —— 5) 进缓冲（到步数就生成“单独文件”） ——
+            rec = {
+                "ts": time.time(),
+                "pid": os.getpid(),
+                "prompt":   {"text": prompt_str,   "len_tokens": prompt_len},
+                "response": {"text": response_str, "len_tokens": resp_len},
+                "sequence": sequences_str,
+                "ground_truth": ground_truth,
+                "reward": score,
+                "extra": {k: (str(v) if not isinstance(v, (str,int,float,bool,type(None))) else v)
+                          for k, v in nt.items()},
             }
+            self._dump_one(rec)
+
+            # 少量样例打印
+            if already_print_data_sources.get(data_source, 0) < self.num_examine:
+                already_print_data_sources[data_source] = already_print_data_sources.get(data_source, 0) + 1
+                print(sequences_str)
+
+        print(f"[DEBUG] all_scores: {all_scores}")
+
+        # —— 步进：到阈值就写“独立文件” —— 
+        self.step += 1
+        if self.save_rollout and (self.step % self.save_every_steps == 0):
+            self._flush()
+
+        # —— 返回语义保持一致 —— 
+        if has_rm:
+            return {"reward_tensor": data.batch['rm_scores']} if return_dict else data.batch['rm_scores']
         else:
-            return reward_tensor
+            return {"reward_tensor": reward_tensor} if return_dict else reward_tensor
+
+
+
+# class DummyRewardManager():
+#     """
+#     Drop-in replacement:
+#     - 全量将每条 rollout 落到 JSONL（每进程一个文件，避免写冲突）
+#     - 若传入 compute_score，则用它算 reward；否则从 non_tensor_batch['reward'] 读取
+#     """
+
+#     def __init__(self, tokenizer, num_examine, compute_score=None) -> None:
+#         self.tokenizer = tokenizer
+#         self.num_examine = num_examine
+#         self.compute_score = compute_score
+
+#         # 统一落盘目录：优先环境变量 ROLLOUT_DUMP_DIR，否则当前目录 ./rollouts
+#         out_dir = os.environ.get("ROLLOUT_DUMP_DIR", "outputs/rollouts")
+#         os.makedirs(out_dir, exist_ok=True)
+#         env_flag = os.getenv("ROLLOUT_DUMP_ENABLE")
+#         self.save_rollout = _to_bool(env_flag) if env_flag is not None else False
+
+#         host = socket.gethostname()
+#         rank = os.environ.get("RANK") or os.environ.get("LOCAL_RANK") or "0"
+#         pid = os.getpid()
+#         # 每个进程单独文件，减少并发写冲突
+#         self._file = os.path.join(out_dir, f"rollouts_rank{rank}_pid{pid}_{host}.jsonl")
+
+
+#     def _dump_one(self, rec: dict):
+#         if not self.save_rollout:
+#             return
+#         # 逐行追加写入，简单稳妥；如需更高吞吐可考虑缓冲批量写
+#         with open(self._file, "a", encoding="utf-8") as f:
+#             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+#     def __call__(self, data: "DataProto", return_dict=False):
+#         # 不再提前 return，而是标记一下
+#         has_rm = "rm_scores" in data.batch
+
+#         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
+#         all_scores = []
+#         already_print_data_sources = {}
+
+#         for i in range(len(data)):
+#             item = data[i]  # DataProtoItem
+
+#             # ========== 1) 计算 prompt/response 的有效长度 ==========
+#             # prompt_ids = item.batch['input_ids']
+#             # prompt_len = prompt_ids.shape[-1]
+
+#             seq_ids = item.batch["input_ids"] 
+#             attn = item.batch['attention_mask']
+#             T       = seq_ids.shape[-1]
+#             valid_seq_len = int(attn.sum().item())
+
+#             # ---- 计算 response 的有效长度 ----
+#             if "loss_mask" in item.batch:               # 常见：loss_mask 就是 response mask
+#                 resp_len = int(item.batch["loss_mask"].sum().item())
+#             elif "response_mask" in item.batch:
+#                 resp_len = int(item.batch["response_mask"].sum().item())
+#             else:
+#                 # 兜底：用 responses 的有效长度（若有右侧 padding 需根据实际pad_id处理）
+#                 resp_len = int((item.batch["responses"] != 0).sum().item())
+
+#             resp_len = max(min(resp_len, valid_seq_len), 0)
+#             prompt_len = max(valid_seq_len - resp_len, 0)
+
+#             # ---- 按“左填充”切片（VeRL 默认左填充，valid 在末尾）----
+#             start_valid = T - valid_seq_len
+#             prompt_end  = T - resp_len
+#             valid_prompt_ids = seq_ids[start_valid:prompt_end]
+#             valid_resp_ids   = seq_ids[prompt_end:T]
+
+#             # ========== 2) 解码文本 ==========
+#             prompt_str = self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
+#             response_str = self.tokenizer.decode(valid_resp_ids,  skip_special_tokens=True)
+#             sequences_str = self.tokenizer.decode(
+#                 torch.cat((valid_prompt_ids, valid_resp_ids)),
+#                 skip_special_tokens=True
+#             )
+
+#             # ========== 3) 收集元信息 ==========
+#             nt = item.non_tensor_batch or {}
+#             data_source  = nt.get("data_source", "default")
+#             ground_truth = nt.get("ground_truth")
+#             sample_index = nt.get("sample_index")
+#             rollout_n    = nt.get("rollout_n")
+
+#             # ========== 4) 计算/读取 reward ==========
+#             if self.compute_score is not None:
+#                 try:
+#                     score = float(self.compute_score(data_source, response_str, ground_truth, extra_info=nt))
+#                 except TypeError:
+#                     score = float(self.compute_score(data_source, response_str, ground_truth))
+#             elif has_rm:
+#                 score = float(data.batch['rm_scores'][i].mean().item())
+#             else:
+#                 score = float(nt['reward']) if 'reward' in nt else 0.0
+
+#             # 写回到 reward_tensor（最后一个有效 token 位置）
+#             if resp_len > 0:
+#                 reward_tensor[i, resp_len - 1] = score
+#             all_scores.append(score)
+
+#             # ========== 5) JSONL 落盘（每条样本一行） ==========
+#             rec = {
+#                 "ts": time.time(),
+#                 "pid": os.getpid(),
+#                 "prompt":   {"text": prompt_str,   "len_tokens": prompt_len},
+#                 "response": {"text": response_str, "len_tokens": resp_len},
+#                 "sequence": sequences_str,
+#                 "ground_truth": ground_truth,
+#                 "reward": score,
+#                 "extra": {k: (str(v) if not isinstance(v, (str,int,float,bool,type(None))) else v)
+#                         for k, v in nt.items()},
+#             }
+#             # rec = {
+#             #     "ts": time.time(),
+#             #     "uuid": str(uuid.uuid4()),
+#             #     "host": socket.gethostname(),
+#             #     "pid": os.getpid(),
+#             #     "data_source": data_source,
+#             #     "sample_index": sample_index,
+#             #     "rollout_n": rollout_n,
+#             #     "prompt":   {"text": prompt_str,   "len_tokens": prompt_len},
+#             #     "response": {"text": response_str, "len_tokens": resp_len},
+#             #     "sequence": sequences_str,
+#             #     "ground_truth": ground_truth,
+#             #     "reward": score,
+#             #     "extra": {k: (str(v) if not isinstance(v, (str,int,float,bool,type(None))) else v)
+#             #             for k, v in nt.items()},
+#             # }
+#             self._dump_one(rec)
+
+#             # 可选：只打印少量样例
+#             if data_source not in already_print_data_sources:
+#                 already_print_data_sources[data_source] = 0
+#             if already_print_data_sources[data_source] < self.num_examine:
+#                 already_print_data_sources[data_source] += 1
+#                 print(sequences_str)
+
+#         print(f"[DEBUG] all_scores: {all_scores}")
+#         # print(f"[DEBUG] all_scores shape: {np.array(all_scores).shape}")
+#         # print(f"[DEBUG] all_scores mean: {np.mean(all_scores)}")
+#         # print(f"[DEBUG] all_scores max: {np.max(all_scores)}")
+#         # print(f"[DEBUG] all_scores min: {np.min(all_scores)}")
+#         # print(f"[DEBUG] all_scores std: {np.std(all_scores)}")
+
+#         # —— 关键：保持原语义的返回 —— 
+#         if has_rm:
+#             return {"reward_tensor": data.batch['rm_scores']} if return_dict else data.batch['rm_scores']
+#         else:
+#             return {"reward_tensor": reward_tensor} if return_dict else reward_tensor
+
+# class DummyRewardManager():
+#     """The reward manager.
+#     """
+
+#     def __init__(self, tokenizer, num_examine, compute_score=None) -> None:
+#         self.tokenizer = tokenizer
+#         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
+#         self.compute_score = compute_score
+
+#     def __call__(self, data: DataProto, return_dict=False):
+#         """We will expand this function gradually based on the available datasets"""
+
+#         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
+#         if 'rm_scores' in data.batch.keys():
+#             if return_dict:
+#                 return {
+#                     "reward_tensor": data.batch['rm_scores'],
+#                 }
+#             else:
+#                 return data.batch['rm_scores']
+
+#         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
+
+#         all_scores = []
+
+#         already_print_data_sources = {}
+
+#         for i in range(len(data)):
+#             data_item = data[i]  # DataProtoItem
+
+#             prompt_ids = data_item.batch['prompts']
+
+#             prompt_length = prompt_ids.shape[-1]
+
+#             valid_prompt_length = data_item.batch['attention_mask'][:prompt_length].sum()
+#             valid_prompt_ids = prompt_ids[-valid_prompt_length:]
+
+#             response_ids = data_item.batch['responses']
+#             valid_response_length = data_item.batch['attention_mask'][prompt_length:].sum()
+#             valid_response_ids = response_ids[:valid_response_length]
+
+#             # decode
+#             sequences = torch.cat((valid_prompt_ids, valid_response_ids))
+#             sequences_str = self.tokenizer.decode(sequences)
+
+#             score = data_item.non_tensor_batch['reward']
+#             score = float(score)
+ 
+#             reward_tensor[i, valid_response_length - 1] = score
+#             all_scores.append(score)
+
+#             # Get data_source from data_item if available, otherwise use a default value
+#             data_source = data_item.non_tensor_batch.get('data_source', 'default')
+            
+#             if data_source not in already_print_data_sources:
+#                 already_print_data_sources[data_source] = 0
+
+#             if already_print_data_sources[data_source] < self.num_examine:
+#                 already_print_data_sources[data_source] += 1
+#                 print(sequences_str)
+        
+#         print(f"[DEBUG] all_scores: {all_scores}")
+#         print(f"[DEBUG] all_scores shape: {np.array(all_scores).shape}")
+#         print(f"[DEBUG] all_scores mean: {np.mean(all_scores)}")
+#         print(f"[DEBUG] all_scores max: {np.max(all_scores)}")
+#         print(f"[DEBUG] all_scores min: {np.min(all_scores)}")
+#         print(f"[DEBUG] all_scores std: {np.std(all_scores)}")
+
+#         if return_dict:
+#             return {
+#                 "reward_tensor": reward_tensor,
+#             }
+#         else:
+#             return reward_tensor
 
 def get_custom_reward_fn(config):
     import importlib.util, os

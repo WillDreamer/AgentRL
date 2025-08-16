@@ -114,6 +114,45 @@ bash recipe/search_r1/rag_server/launch.sh
 bash train_search.sh
 ```
 
+## 📊 Further Analysis
+
+### Visualization of rollout
+
+1. Utilize the `custom_reward_function` to define a specific file, you can refer to `DummyRewardManager` in `recipe/webshop/main_webshop.py` for example.
+
+2. Add the hyperpapram in the training scripts as follows:
+
+```bash
+
+# claim the saving folder
+export ROLLOUT_DUMP_DIR=/workspace/AgentRL/outputs/
+export ROLLOUT_DUMP_ENABLE=True
+export ROLLOUT_SAVE_EVERY_STEPS=10
+
+# Merge all of the generated seq
+cd /abs/path/rollouts
+cat rollouts_*.jsonl > all_rollouts.jsonl
+```
+
+
+<!-- 
+
+```bash
+# Install requiremnet
+pip install mlflow
+
+# Start server
+mlflow server \
+  --host 0.0.0.0 --port 5000 \
+  --backend-store-uri sqlite:////tmp/mlruns.db \
+  --default-artifact-root /tmp/mlruns
+
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+
+actor_rollout_ref.rollout.trace.backend: mlflow  # or weave
+actor_rollout_ref.rollout.trace.token2text: True
+trainer.logger: ['console', 'mlflow']
+``` -->
 
 ## 🎆 Awesome work for reference
 
