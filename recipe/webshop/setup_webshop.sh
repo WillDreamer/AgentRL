@@ -9,7 +9,7 @@ conda activate verl
 
 conda install -c pytorch faiss-cpu -y
 sudo apt update
-sudo apt install default-jdk
+sudo apt install -y default-jdk
 conda install -c conda-forge openjdk=21 maven -y
 
 pip install -r requirements_webshop.txt
