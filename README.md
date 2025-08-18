@@ -34,7 +34,8 @@ Figure 1: Overview of our framework
 
 ### 📅 TODO
 
-- [ ] Cross-domain agentic reasoning and self-aware tool integration
+- [ ] Cross-domain agentic reasoning
+- [ ] Multiple tool integration reasoning
 - [ ] Gap between $\pi_{\theta_{vLLM}}$ and $\pi_{\theta_{FSDP}}$
 - [ ] Turn-level rollout compactness
 - [x] Rollout analysis
