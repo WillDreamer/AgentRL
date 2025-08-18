@@ -32,6 +32,11 @@ Figure 1: Overview of our framework
 - ➡️ Support Multimodal Agents
 - ➡️ Support Software Enginnering Agents
 
+### 📅 TODO
+
+- [ ] Cross-domain agentic reasoning and self-aware tool integration
+- [x] Rollout analysis
+
 ## 💡 Getting Started
 
 
