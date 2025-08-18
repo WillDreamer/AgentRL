@@ -36,6 +36,7 @@ Figure 1: Overview of our framework
 
 - [ ] Cross-domain agentic reasoning and self-aware tool integration
 - [ ] Gap between $\pi_{\theta_{vLLM}}$ and $\pi_{\theta_{FSDP}}$
+- [ ] Turn-level rollout compactness
 - [x] Rollout analysis
 
 ## 💡 Getting Started
