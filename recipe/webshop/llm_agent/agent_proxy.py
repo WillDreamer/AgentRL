@@ -130,6 +130,10 @@ class LLMAgentProxy:
 		if isinstance(self.actor_wg, RayWorkerGroup):
 			padded_lm_inputs, pad_size = pad_dataproto_to_divisor(lm_inputs, self.actor_wg.world_size)
 			padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
+			# idx_ = 2
+			# tokens = padded_lm_outputs.batch['responses'][idx_][padded_lm_outputs.batch['responses'][idx_] != 151643]
+			# decoded_tokens = [self.tokenizer.decode([tid], skip_special_tokens=True) for tid in tokens]
+			# prob = padded_lm_outputs.batch['rollout_log_probs'][idx_][padded_lm_outputs.batch['rollout_log_probs'][idx_] != -1]
 			lm_outputs = unpad_dataproto(padded_lm_outputs, pad_size=pad_size)
 			lm_outputs.meta_info = lm_inputs.meta_info
 			lm_outputs.non_tensor_batch = lm_inputs.non_tensor_batch
