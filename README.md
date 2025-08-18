@@ -38,6 +38,7 @@ Figure 1: Overview of our framework
 - [ ] Multiple tool integration reasoning
 - [ ] Gap between $\pi_{\theta_{vLLM}}$ and $\pi_{\theta_{FSDP}}$
 - [ ] Turn-level rollout compactness
+- [ ] Dynamical sampling temperature
 - [x] Rollout analysis
 
 ## 💡 Getting Started
