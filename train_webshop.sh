@@ -19,4 +19,5 @@ python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     actor_rollout_ref.rollout.rollout_filter_ratio=$FILTER_RATIO \
     trainer.experiment_name=$TASK_NAME-$REMARK-ppo-filter$FILTER_RATIO-$MODEL \
     trainer.nnodes=1 \
+    trainer.rollout_data_dir=log_rollout
     
