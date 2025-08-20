@@ -164,7 +164,7 @@ class DummyRewardManager():
                 already_print_data_sources[data_source] = already_print_data_sources.get(data_source, 0) + 1
                 print(sequences_str)
 
-        print(f"[DEBUG] all_scores: {[f'{score:.2f}' for score in all_scores]}")
+        print(f"[DEBUG] all_scores: {[f'{score:.4f}' for score in all_scores]}")
 
 
         # —— 步进：到阈值就写“独立文件” —— 
