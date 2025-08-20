@@ -137,7 +137,7 @@ class DummyRewardManager():
                 except TypeError:
                     score = float(self.compute_score(data_source, response_str, ground_truth))
             elif has_rm:
-                score = float(data.batch['rm_scores'][i].mean().item())
+                score = float(data.batch['rm_scores'][i][-1].item())
             else:
                 score = float(nt['reward']) if 'reward' in nt else 0.0
 
