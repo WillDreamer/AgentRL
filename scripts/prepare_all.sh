@@ -36,7 +36,7 @@ git lfs install --skip-repo >/dev/null 2>&1 || true
 
 log "确保 /workspace 存在并可写"
 as_root 'mkdir -p /workspace'
-as_root 'chmod -R a+w /workspace/'
+
 
 # ---- 2) Conda 初始化 ----
 log "初始化 conda 环境"
@@ -92,9 +92,10 @@ log "运行 recipe/webshop/setup_webshop.sh（若存在）"
 
 # 再次确保 conda 激活（有些脚本可能改变了环境）
 if command -v conda >/dev/null 2>&1; then
-  conda activate base || true
+  conda activate verl || true
 fi
 
+as_root 'chmod -R a+w /workspace/'
 
 log "校验登录状态（whoami）"
 if command -v hf >/dev/null 2>&1; then
