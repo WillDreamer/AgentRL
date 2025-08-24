@@ -1,7 +1,7 @@
 set -e
 
 TASK_NAME=_webshop
-REMARK=prompt_v3_T_5_Len_720
+REMARK=prompt_v3_T_5_Len_720_VoidRe_1
 FILTER_RATIO=0.25
 MODEL=Qwen/Qwen3-4B
 
