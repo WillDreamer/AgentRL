@@ -249,8 +249,7 @@ class ContextManager:
             messages = [
                 {"role": "system", "content": f"You're a helpful assistant. "}
             ]
-            text = self.tokenizer.apply_chat_template(messages, add_generation_prompt=(not prepare_for_update), tokenize=False)
-            text = "<|im_start|>" + text.split("<|im_start|>")[1]
+            text = self.tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
             
             messages.append({"role": "user", "content": self.prefix_lookup[env_output["env_id"]]})
 
@@ -263,15 +262,14 @@ class ContextManager:
                     LENGTH_PROMPT = f"Max response length: {self.env_config_lookup[env_output['env_id']]['max_tokens']} words (tokens)."
                     messages[-1]["content"] += f"State:\n{content['state']}\nYou have {content['actions_left']} actions left. Always output: {FORMAT_PROMPT} with no extra text. Strictly follow this format. {LENGTH_PROMPT}\n"
                 
-                state_info = self.tokenizer.apply_chat_template([messages[-1]], add_generation_prompt=(not prepare_for_update), tokenize=False)
-                state_info = "<|im_start|>" + state_info.split("<|im_start|>")[1]
-                text += state_info
+                text += self.tokenizer.apply_chat_template([messages[-1]], add_generation_prompt=False, tokenize=False)
+
                 if "llm_response" in content:
                     llm_response = {"role": "assistant", "content": content["llm_response"]}
                     messages.append(llm_response)
 
-                    lm_res_template = self.tokenizer.apply_chat_template([{"role": "user", "content": " "},llm_response], add_generation_prompt=(not prepare_for_update), tokenize=False)
-                    lm_res_template = ("<|im_start|>" + lm_res_template.split("<|im_start|>")[2]) if lm_res_template.count("<|im_start|>") >= 2 else lm_res_template
+                    lm_res_template = "<|im_start|>assistant\n" + content["llm_response"] + "<|im_end|>\n"
+                    
                     text += lm_res_template
                 if "reward" in content and not (prepare_for_update and idx == len(env_output["history"]) - 1):
                     # when prepare for update, we do not add the reward from the n+1 turn to the trajectory
@@ -279,7 +277,7 @@ class ContextManager:
                     messages.append(reward_info)
             
             if not prepare_for_update:
-                text += f"\n<|im_start|>assistant"      
+                text += f"<|im_start|>assistant\n"     
             # NOTE: this assertion is important for loss mask computation        
             assert all(msg["role"] == "assistant" for msg in messages[2::2])
 
