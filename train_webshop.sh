@@ -1,7 +1,7 @@
 set -e
 
 TASK_NAME=_webshop
-REMARK=prompt_v3_T_5_Len_720_VoidRe_1
+REMARK=prompt_v5_T_5_Len_720_VoidRe_1
 FILTER_RATIO=0.25
 MODEL=Qwen/Qwen3-4B
 
@@ -21,5 +21,6 @@ python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     trainer.nnodes=1 \
     trainer.rollout_data_dir=log_rollout \
     agent_proxy.max_turn=5 \
+    custom_envs.WebShop.max_actions_per_traj=5 \
     actor_rollout_ref.rollout.response_length=720 \
     
