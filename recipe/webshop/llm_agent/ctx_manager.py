@@ -1,7 +1,7 @@
 """
-This is the context manager for the LLM agent.
-author: Kangrui Wang, Zihan Wang
-date: 2025-03-30
+This is the updated context manager for the LLM agent.
+author: Haixin
+date: 2025-08-24
 """
 from itertools import zip_longest
 
@@ -277,7 +277,9 @@ class ContextManager:
                     # when prepare for update, we do not add the reward from the n+1 turn to the trajectory
                     reward_info = {"role": "user", "content": f"Reward:\n{content['reward']}\n"}
                     messages.append(reward_info)
-            text += f"\n<|im_start|>assistant"      
+            
+            if not prepare_for_update:
+                text += f"\n<|im_start|>assistant"      
             # NOTE: this assertion is important for loss mask computation        
             assert all(msg["role"] == "assistant" for msg in messages[2::2])
 
