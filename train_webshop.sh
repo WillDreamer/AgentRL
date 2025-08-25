@@ -1,9 +1,9 @@
 set -e
 
 TASK_NAME=_webshop
-REMARK=prompt_v5_T_5_Len_720_VoidRe_1
+REMARK=prompt_v5_T_5_Len_3000_VoidRe_1
 FILTER_RATIO=0.25
-MODEL=Qwen/Qwen3-4B
+MODEL=Qwen/Qwen3-1.7B
 
 WANDB_API_KEY="ba70fcbc92808cc7a1750dd80ac3908295e6854f" # Modify your wandb key
 # ============================ Preparation ============================
@@ -22,5 +22,8 @@ python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     trainer.rollout_data_dir=log_rollout \
     agent_proxy.max_turn=5 \
     custom_envs.WebShop.max_actions_per_traj=5 \
-    actor_rollout_ref.rollout.response_length=720 \
+    actor_rollout_ref.rollout.response_length=3000 \
+    actor_rollout_ref.rollout.max_model_len=20000 \
+    actor_rollout_ref.rollout.max_num_batched_tokens=20000 \
+    trainer.total_training_steps=400
     
