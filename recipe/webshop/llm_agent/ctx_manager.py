@@ -349,7 +349,7 @@ class ContextManager:
             llm_inputs.meta_info = {"metrics": metrics}
         return llm_inputs
 
-    def get_env_inputs(self, lm_outputs: DataProto, turn_idx: int) -> List[Dict]:
+    def get_env_inputs(self, lm_outputs: DataProto) -> List[Dict]:
         if lm_outputs.batch is not None and 'responses' in lm_outputs.batch.keys():
             responses = self.tokenizer.batch_decode(
                 lm_outputs.batch['responses'], 
