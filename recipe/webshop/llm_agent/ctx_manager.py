@@ -284,11 +284,11 @@ class ContextManager:
             assert all(msg["role"] == "assistant" for msg in messages[2::2])
 
             # text = self.tokenizer.apply_chat_template(messages, add_generation_prompt=(not prepare_for_update), tokenize=False)
-            if not prepare_for_update:
-                if self.config.agent_proxy.enable_think:
-                    text += "<think>" # force the LLM to think before answering
-                else:
-                    text += "<answer>" # force the LLM to answer
+            # if not prepare_for_update:
+            #     if self.config.agent_proxy.enable_think:
+            #         text += "<think>" # force the LLM to think before answering
+            #     else:
+            #         text += "<answer>" # force the LLM to answer
             llm_input_texts.append(text)
             messages_list.append(messages)
         
