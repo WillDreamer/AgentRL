@@ -138,26 +138,37 @@ class LLMAgentProxy:
 			if off_policy and not val:
 				padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
 
+				B = padded_lm_outputs.batch.batch_size.numel()
+				padded_lm_outputs.batch.set("activate_off", torch.zeros(B, dtype=torch.bool))
+
 				offp_mask = padded_lm_inputs.batch["offp_mask"]==0
 				td_off = padded_lm_inputs.batch[~offp_mask]
 				non_off = {k: v[~offp_mask.numpy()] for k, v in padded_lm_inputs.non_tensor_batch.items()}
 				data_off = DataProto(batch=td_off, non_tensor_batch=non_off)
 				offp_model = get_model(model_name="anthropic.claude-3-5-sonnet-20240620-v1:0", openai_key=None, region="us-east-1")
-				data_off = self.tokenizer.batch_decode(data_off.batch['input_ids'],skip_special_tokens=True)
+				data_off_texts = self.tokenizer.batch_decode(data_off.batch['input_ids'],skip_special_tokens=True)
 				responses_off = []
 				breakpoint()
-				for i in range(len(data_off)):
+				for i in range(len(data_off_texts)):
 					response = offp_model.respond(
 								[
-									{"role": "user", "content": data_off[i]}
+									{"role": "user", "content": data_off_texts[i]}
 								],
 								max_tokens=self.config.actor_rollout_ref.rollout.response_length,
 								max_context_size=self.config.actor_rollout_ref.rollout.max_model_len
 							)
+					if response is not None:
+						idx = torch.where(~offp_mask)[0][i].item()
+						decode_text = self.tokenizer.encode(response)
+						padded_lm_outputs[idx].batch['responses'] = decode_text +[self.tokenizer.pad_token_id for i in range(self.config.actor_rollout_ref.rollout.response_length - len(decode_text)) ]
+						padded_lm_outputs[idx].batch['input_ids'][-self.config.actor_rollout_ref.rollout.response_length:] = padded_lm_outputs[idx].batch['responses']
+						padded_lm_outputs[idx].batch['attention_mask'][-self.config.actor_rollout_ref.rollout.response_length:][:len(decode_text)]=1
+						padded_lm_outputs[idx].batch['attention_mask'][-self.config.actor_rollout_ref.rollout.response_length:][len(decode_text):]=0
+						padded_lm_outputs[idx].batch['activate_off'][idx] = True
+
 					responses_off.append(response)
 				breakpoint()
 				
-			
 			else:
 				padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
 

@@ -92,7 +92,7 @@ class AnthropicModel(BedRockModel):
             "max_tokens": max_tokens,
             "anthropic_version": "bedrock-2023-05-31"
         }
-        retry = 3
+        retry = 5
         while retry > 0:
             try:
                 response = self.bedrock.invoke_model(body=json.dumps(payload),
@@ -101,7 +101,7 @@ class AnthropicModel(BedRockModel):
             except Exception as e:
                 retry -= 1
                 import time
-                time.sleep(5)
+                time.sleep(30)
                 if retry == 0:
                     return None
 
