@@ -246,6 +246,7 @@ class ContextManager:
             if max_k is not None and isinstance(max_k, int) and max_k > 0:
                 env_output['history'] = env_output['history'][-max_k:]
             
+            
             messages = [
                 {"role": "system", "content": f"You're a helpful assistant. "}
             ]
@@ -277,7 +278,7 @@ class ContextManager:
                     messages.append(reward_info)
             
             if not prepare_for_update:
-                text += f"<|im_start|>assistant\n"     
+                text += f"<|im_start|>assistant\n"      
             # NOTE: this assertion is important for loss mask computation        
             assert all(msg["role"] == "assistant" for msg in messages[2::2])
 
@@ -290,7 +291,6 @@ class ContextManager:
             llm_input_texts.append(text)
             messages_list.append(messages)
         
-
         inputs = self.tokenizer(llm_input_texts, return_tensors="pt", padding=True, padding_side="left", truncation=False) # do not truncate here. Process later at TODO
         input_ids, attention_mask = inputs.input_ids, inputs.attention_mask
         position_ids = attention_mask.cumsum(dim=-1)
@@ -304,6 +304,8 @@ class ContextManager:
                 normalized_score_tensor = self._normalize_score_tensor(score_tensor, env_outputs)
             response_length = response_mask.sum(dim=-1).float().mean().item()
 
+        offp_mask = [env_output['offp_mask'] for env_output in env_outputs]
+        offp_mask = torch.tensor(offp_mask, dtype=torch.float32)
 
         llm_inputs = DataProto()
         llm_inputs.batch = TensorDict({
@@ -311,6 +313,7 @@ class ContextManager:
             "attention_mask": attention_mask,
             "position_ids": position_ids,
             "responses": input_ids[:, 1:], # remove the first token
+            "offp_mask": offp_mask,
         }, batch_size=input_ids.shape[0])
 
         if prepare_for_update:

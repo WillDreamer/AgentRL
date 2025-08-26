@@ -63,7 +63,16 @@ class EnvStateManager:
         env_list = []
         done_groups = 0
         for tag, n_group in zip(config.env_configs.tags, config.env_configs.n_groups):
+            # 每个group_id选出两个env_id，offp_mask为1，其余为0
+            offp_list = []
+            for nn in range(n_group):
+                r_idxs = random.choices(range(self.group_size), k=1)
+                offp_list.extend([r_idx + nn * self.group_size for r_idx in r_idxs])
             for env_id in range(done_groups * self.group_size, (done_groups + n_group) * self.group_size):
+                if env_id in offp_list:
+                    offp_mask = 1
+                else:
+                    offp_mask = 0
                 cfg_template = self.sys_config.custom_envs[tag]
                 env_class = cfg_template.env_type
                 max_actions_per_traj = cfg_template.max_actions_per_traj
@@ -72,7 +81,7 @@ class EnvStateManager:
                 else:
                     env_config = REGISTERED_ENV_CONFIGS[env_class](**cfg_template.env_config)
                 env_obj = REGISTERED_ENVS[env_class](env_config)
-                entry = {'tag': tag, 'group_id': env_id // self.group_size, 'env_id': env_id, 
+                entry = {'tag': tag, 'group_id': env_id // self.group_size, 'env_id': env_id, 'offp_mask': offp_mask,
                         'env': env_obj, 'config': env_config, 'status': EnvStatus(), 'max_actions_per_traj': max_actions_per_traj}
                 env_list.append(entry)
             done_groups += n_group
@@ -88,7 +97,7 @@ class EnvStateManager:
             return sum(seeds, [])
 
         envs = self.envs
-        rollout_cache = [{"env_id": entry['env_id'], "history": [], "group_id": entry['group_id'], "tag": entry['tag'], "penalty": 0} for entry in envs]
+        rollout_cache = [{"env_id": entry['env_id'], "history": [], "group_id": entry['group_id'], "tag": entry['tag'], "penalty": 0, "offp_mask": entry['offp_mask']} for entry in envs]
 
         # reset all environments
         if seed is None:

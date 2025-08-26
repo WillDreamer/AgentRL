@@ -100,8 +100,10 @@ class AnthropicModel(BedRockModel):
                 return process_response(response)
             except Exception as e:
                 retry -= 1
+                import time
+                time.sleep(5)
                 if retry == 0:
-                    raise e
+                    return None
 
 
 class DeepseekModel(BedRockModel):

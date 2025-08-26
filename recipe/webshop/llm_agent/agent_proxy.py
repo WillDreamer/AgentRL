@@ -10,6 +10,7 @@ from typing import List, Dict
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 from .base_llm import ConcurrentLLM
 import torch
+from api.bedrock import get_model
 # import time
 
 
@@ -126,11 +127,40 @@ class LLMAgentProxy:
 		self.actor_wg = actor_rollout_wg
 		self.tokenizer = tokenizer
 
-	def generate_sequences(self, lm_inputs: DataProto):
+	def generate_sequences(self, lm_inputs: DataProto, val=False):
 		# TODO: add kv cache both for the vllm wrapper here and for verl vllm.
 		if isinstance(self.actor_wg, RayWorkerGroup):
 			padded_lm_inputs, pad_size = pad_dataproto_to_divisor(lm_inputs, self.actor_wg.world_size)
-			padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
+			
+			off_policy = True
+
+			## off policy rollout
+			if off_policy and not val:
+				padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
+
+				offp_mask = padded_lm_inputs.batch["offp_mask"]==0
+				td_off = padded_lm_inputs.batch[~offp_mask]
+				non_off = {k: v[~offp_mask.numpy()] for k, v in padded_lm_inputs.non_tensor_batch.items()}
+				data_off = DataProto(batch=td_off, non_tensor_batch=non_off)
+				offp_model = get_model(model_name="anthropic.claude-3-5-sonnet-20240620-v1:0", openai_key=None, region="us-east-1")
+				data_off = self.tokenizer.batch_decode(data_off.batch['input_ids'],skip_special_tokens=True)
+				responses_off = []
+				breakpoint()
+				for i in range(len(data_off)):
+					response = offp_model.respond(
+								[
+									{"role": "user", "content": data_off[i]}
+								],
+								max_tokens=self.config.actor_rollout_ref.rollout.response_length,
+								max_context_size=self.config.actor_rollout_ref.rollout.max_model_len
+							)
+					responses_off.append(response)
+				breakpoint()
+				
+			
+			else:
+				padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
+
 			# idx_ = 2
 			# tokens = padded_lm_outputs.batch['responses'][idx_][padded_lm_outputs.batch['responses'][idx_] != 151643]
 			# decoded_tokens = [self.tokenizer.decode([tid], skip_special_tokens=True) for tid in tokens]
@@ -271,10 +301,11 @@ class LLMAgentProxy:
 
 		for i in range(self.config.agent_proxy.max_turn):
 			lm_inputs: DataProto = ctx_manager.get_lm_inputs(env_outputs, prepare_for_update=False)
+			
 			lm_inputs.meta_info = dataproto.meta_info # TODO: setup vllm early stop when max length is reached. make sure this can be done
 
 			#* vanilla rollout of LLM
-			lm_outputs: DataProto = self.generate_sequences(lm_inputs)
+			lm_outputs: DataProto = self.generate_sequences(lm_inputs,val=val)
 			
 			#* Check for void actions and regenerate if necessary
 			if val==False:
