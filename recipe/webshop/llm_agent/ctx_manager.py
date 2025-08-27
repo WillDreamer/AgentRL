@@ -47,6 +47,34 @@ def get_masks_and_scores(input_ids: torch.Tensor, tokenizer: AutoTokenizer, all_
     else:
         loss_mask = (turn_indicators > 1) # learns everything after system prompt
     response_mask = (turn_indicators % 2 == 1) & (turn_indicators > 1)
+
+    #* Loss mask for void actions
+    B, T = input_ids.shape
+    row_max = turn_indicators.amax(dim=1)               # [B]
+    num_turns = torch.clamp(((row_max - 1) // 2), min=0)  # [B]
+    #* Check if the responses in the turn contain </think>
+    valid = (turn_indicators > 0) & response_mask
+    group_id = torch.where(
+        valid,
+        (turn_indicators - 1).div(2, rounding_mode='floor'),
+        torch.full_like(turn_indicators, -1),
+    )
+    for i in range(B):
+        nt = int(num_turns[i].item())
+        if nt <= 0:
+            continue
+
+        gi = group_id[i]       # [T]
+        row_input = input_ids[i]
+
+        for r in range(nt):
+            idxs_r = gi.eq(r)
+            if not idxs_r.any():
+                continue
+
+            #* check if contains target_id
+            if not (row_input[idxs_r] == int(151668)).any():
+                loss_mask[i][idxs_r] = False  
     
     score_tensor = torch.zeros_like(input_ids, dtype=torch.float32)
     if use_turn_scores:
