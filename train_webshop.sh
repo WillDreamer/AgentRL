@@ -24,8 +24,8 @@ python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     agent_proxy.max_turn=5 \
     custom_envs.WebShop.max_actions_per_traj=5 \
     actor_rollout_ref.rollout.response_length=500 \
-    actor_rollout_ref.rollout.max_model_len=20000 \
-    actor_rollout_ref.rollout.max_num_batched_tokens=20000 \
+    actor_rollout_ref.rollout.max_model_len=15000 \
+    actor_rollout_ref.rollout.max_num_batched_tokens=15000 \
     trainer.total_training_steps=400 \
     critic.optim.lr=5e-7 \
     actor_rollout_ref.actor.optim.lr=5e-7
