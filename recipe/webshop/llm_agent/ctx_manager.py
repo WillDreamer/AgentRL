@@ -307,13 +307,18 @@ class ContextManager:
         offp_mask = [env_output['offp_mask'] for env_output in env_outputs]
         offp_mask = torch.tensor(offp_mask, dtype=torch.float32)
 
+        activate_offp = [env_output['activate_offp'] for env_output in env_outputs]
+        breakpoint()
+        activate_offp = torch.tensor(activate_offp, dtype=torch.bool)
+
         llm_inputs = DataProto()
         llm_inputs.batch = TensorDict({
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "position_ids": position_ids,
             "responses": input_ids[:, 1:], # remove the first token
-            "offp_mask": offp_mask,
+            "offp_mask": offp_mask, # mask for off-policy actions
+            "activate_offp": activate_offp, # mask for activating off-policy actions
         }, batch_size=input_ids.shape[0])
 
         if prepare_for_update:
@@ -363,8 +368,10 @@ class ContextManager:
         env_ids = lm_outputs.non_tensor_batch['env_ids']
         env_inputs = []
         log_probs = lm_outputs.batch['rollout_log_probs']
+        offp_mask = lm_outputs.batch['offp_mask']
+        activate_offp = lm_outputs.batch['activate_offp']
 
-        for env_id, response, log_prob in zip(env_ids, responses, log_probs):
+        for env_id, response, log_prob, offp_mask, activate_offp in zip(env_ids, responses, log_probs, offp_mask, activate_offp):
             llm_response, actions = self._parse_response(response)
 
             log_prob = log_prob[log_prob!=-1]
@@ -375,7 +382,9 @@ class ContextManager:
                 "llm_response": llm_response,
                 "actions": actions,
                 "log_prob": log_prob,
-                "rollout_len":log_prob.shape[0]
+                "rollout_len":log_prob.shape[0],
+                "offp_mask": offp_mask,
+                "activate_offp": activate_offp
             })
         
         return env_inputs

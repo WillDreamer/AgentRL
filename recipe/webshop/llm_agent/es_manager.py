@@ -9,7 +9,7 @@ import PIL.Image
 import hydra
 import random
 import numpy as np
-
+import torch
 from recipe.webshop.env import REGISTERED_ENVS, REGISTERED_ENV_CONFIGS
 from recipe.webshop.utils import register_resolvers
 register_resolvers()
@@ -73,6 +73,7 @@ class EnvStateManager:
                     offp_mask = 1
                 else:
                     offp_mask = 0
+                activate_offp = torch.zeros((self.sys_config.agent_proxy.max_turn), dtype=torch.bool)
                 cfg_template = self.sys_config.custom_envs[tag]
                 env_class = cfg_template.env_type
                 max_actions_per_traj = cfg_template.max_actions_per_traj
@@ -81,7 +82,7 @@ class EnvStateManager:
                 else:
                     env_config = REGISTERED_ENV_CONFIGS[env_class](**cfg_template.env_config)
                 env_obj = REGISTERED_ENVS[env_class](env_config)
-                entry = {'tag': tag, 'group_id': env_id // self.group_size, 'env_id': env_id, 'offp_mask': offp_mask,
+                entry = {'tag': tag, 'group_id': env_id // self.group_size, 'env_id': env_id, 'offp_mask': offp_mask, 'activate_offp': activate_offp,
                         'env': env_obj, 'config': env_config, 'status': EnvStatus(), 'max_actions_per_traj': max_actions_per_traj}
                 env_list.append(entry)
             done_groups += n_group
@@ -97,7 +98,7 @@ class EnvStateManager:
             return sum(seeds, [])
 
         envs = self.envs
-        rollout_cache = [{"env_id": entry['env_id'], "history": [], "group_id": entry['group_id'], "tag": entry['tag'], "penalty": 0, "offp_mask": entry['offp_mask']} for entry in envs]
+        rollout_cache = [{"env_id": entry['env_id'], "history": [], "group_id": entry['group_id'], "tag": entry['tag'], "penalty": 0, "offp_mask": entry['offp_mask'], "activate_offp": entry['activate_offp']} for entry in envs]
 
         # reset all environments
         if seed is None:

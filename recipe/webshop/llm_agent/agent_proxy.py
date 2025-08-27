@@ -11,6 +11,7 @@ from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 from .base_llm import ConcurrentLLM
 import torch
 from api.bedrock import get_model
+import re
 # import time
 
 
@@ -127,7 +128,7 @@ class LLMAgentProxy:
 		self.actor_wg = actor_rollout_wg
 		self.tokenizer = tokenizer
 
-	def generate_sequences(self, lm_inputs: DataProto, val=False):
+	def generate_sequences(self, lm_inputs: DataProto, val=False, turn=0):
 		# TODO: add kv cache both for the vllm wrapper here and for verl vllm.
 		if isinstance(self.actor_wg, RayWorkerGroup):
 			padded_lm_inputs, pad_size = pad_dataproto_to_divisor(lm_inputs, self.actor_wg.world_size)
@@ -138,17 +139,14 @@ class LLMAgentProxy:
 			if off_policy and not val:
 				padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
 
-				B = padded_lm_outputs.batch.batch_size.numel()
-				padded_lm_outputs.batch.set("activate_off", torch.zeros(B, dtype=torch.bool))
-
 				offp_mask = padded_lm_inputs.batch["offp_mask"]==0
 				td_off = padded_lm_inputs.batch[~offp_mask]
 				non_off = {k: v[~offp_mask.numpy()] for k, v in padded_lm_inputs.non_tensor_batch.items()}
 				data_off = DataProto(batch=td_off, non_tensor_batch=non_off)
-				offp_model = get_model(model_name="anthropic.claude-3-5-sonnet-20240620-v1:0", openai_key=None, region="us-east-1")
+				offp_model = get_model(model_name="us.anthropic.claude-3-5-sonnet-20240620-v1:0", openai_key=None, region="us-east-1")
 				data_off_texts = self.tokenizer.batch_decode(data_off.batch['input_ids'],skip_special_tokens=True)
 				responses_off = []
-				breakpoint()
+				
 				for i in range(len(data_off_texts)):
 					response = offp_model.respond(
 								[
@@ -159,15 +157,23 @@ class LLMAgentProxy:
 							)
 					if response is not None:
 						idx = torch.where(~offp_mask)[0][i].item()
+						
+						pattern = r'(.*?)<think>(.*?)</think>\s*<answer>(.*?)</answer>' if self.config.agent_proxy.enable_think else r'<answer>(.*?)</answer>'
+						match = re.search(pattern, response, re.DOTALL)
+						if match:
+							think_content, action_content = match.group(2), match.group(3)
+						else:
+							think_content, action_content = "", match.group(1)
+						response = "</think>" + think_content + "</think><answer>" + action_content + "</answer>"
 						decode_text = self.tokenizer.encode(response)
+						
 						padded_lm_outputs[idx].batch['responses'] = decode_text +[self.tokenizer.pad_token_id for i in range(self.config.actor_rollout_ref.rollout.response_length - len(decode_text)) ]
 						padded_lm_outputs[idx].batch['input_ids'][-self.config.actor_rollout_ref.rollout.response_length:] = padded_lm_outputs[idx].batch['responses']
 						padded_lm_outputs[idx].batch['attention_mask'][-self.config.actor_rollout_ref.rollout.response_length:][:len(decode_text)]=1
 						padded_lm_outputs[idx].batch['attention_mask'][-self.config.actor_rollout_ref.rollout.response_length:][len(decode_text):]=0
-						padded_lm_outputs[idx].batch['activate_off'][idx] = True
+						padded_lm_outputs[idx].batch['activate_offp'][turn] = True
 
 					responses_off.append(response)
-				breakpoint()
 				
 			else:
 				padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
@@ -186,7 +192,7 @@ class LLMAgentProxy:
 
 		return lm_outputs
 
-	def _handle_void_actions(self, lm_inputs: DataProto, lm_outputs: DataProto, max_retries: int = 1) -> DataProto:
+	def _handle_void_actions(self, lm_inputs: DataProto, lm_outputs: DataProto, max_retries: int = 1, turn: int = 0) -> DataProto:
 		"""
 		Check for void actions (responses without <answer> tags) and regenerate them.
 		
@@ -228,7 +234,7 @@ class LLMAgentProxy:
 			void_lm_inputs = self._extract_void_inputs(lm_inputs, void_indices)
 			
 			# Regenerate responses for void samples
-			lm_outputs_new = self.generate_sequences(void_lm_inputs)
+			lm_outputs_new = self.generate_sequences(void_lm_inputs, turn=turn)
 			
 			# Update current outputs with new responses
 			current_outputs = self._update_outputs_with_regenerated(current_outputs, lm_outputs_new, void_indices)
@@ -310,22 +316,27 @@ class LLMAgentProxy:
 		ctx_manager = self.val_ctx_manager if val else self.train_ctx_manager
 		env_outputs = es_manager.reset()
 
+		breakpoint()
+
 		for i in range(self.config.agent_proxy.max_turn):
+			
 			lm_inputs: DataProto = ctx_manager.get_lm_inputs(env_outputs, prepare_for_update=False)
 			
 			lm_inputs.meta_info = dataproto.meta_info # TODO: setup vllm early stop when max length is reached. make sure this can be done
 
 			#* vanilla rollout of LLM
-			lm_outputs: DataProto = self.generate_sequences(lm_inputs,val=val)
+			lm_outputs: DataProto = self.generate_sequences(lm_inputs,val=val,turn=i)
 			
 			#* Check for void actions and regenerate if necessary
 			if val==False:
-				lm_outputs = self._handle_void_actions(lm_inputs, lm_outputs)
+				lm_outputs = self._handle_void_actions(lm_inputs, lm_outputs, turn=i)
 
 			#* env_inputs: manage context in a list ['env_id', 'llm_raw_response', 'llm_response', 'actions'], len is mini_bs
 			#* 'actions':  Only the first MAX_ACTIONS actions are kept in the rollout
 			#* "llm_response" transforms "llm_raw_response" into <think>xx</think><answer>xx</answer>
+			breakpoint()
 			env_inputs: List[Dict] = ctx_manager.get_env_inputs(lm_outputs)
+			breakpoint()
 			env_outputs: List[Dict] = es_manager.step(env_inputs)
 			if len(env_outputs) == 0: # all finished
 				break

@@ -92,7 +92,7 @@ class AnthropicModel(BedRockModel):
             "max_tokens": max_tokens,
             "anthropic_version": "bedrock-2023-05-31"
         }
-        retry = 5
+        retry = 8
         while retry > 0:
             try:
                 response = self.bedrock.invoke_model(body=json.dumps(payload),
@@ -101,7 +101,7 @@ class AnthropicModel(BedRockModel):
             except Exception as e:
                 retry -= 1
                 import time
-                time.sleep(30)
+                time.sleep(3)
                 if retry == 0:
                     return None
 
@@ -349,6 +349,19 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+from collections import defaultdict
+def list_foundation_models():
+    bedrock_client = boto3.client(service_name="bedrock", region_name="us-east-1")
+    response = bedrock_client.list_foundation_models()['modelSummaries']
+    model_dict = defaultdict(list)
+    for model_item in response:
+        model_dict[model_item['providerName']].append([model_item['modelName'], model_item['modelId']])
+    for provider, models in model_dict.items():
+        print(f"Provider: {provider}")
+        models = sorted(models, key=lambda x: x[0])
+        print(f"Models: {models}")
+        print()
+
 
 if __name__ == "__main__":
     args = parse_args()
@@ -363,25 +376,19 @@ if __name__ == "__main__":
     
     used_ids = set()
 
-    if os.path.exists(args.output_file):
-        with open(args.output_file, "r") as f:
-            for line in f:
-                x = json.loads(line)
-                used_ids.add(x["id"])
+    # list_foundation_models()
 
-    with open(args.output_file, "a") as f:
-        for x in dataset:
-            if x["id"] in used_ids:
-                continue
-            response = model.respond(
-                x["messages"],
-                max_tokens=args.max_tokens_per_turn,
-                max_context_size=args.max_context_size
-            )
-            x["response"] = response
-            used_ids.add(x["id"])
-            f.write(json.dumps(x))
-            f.write("\n")
+    for x in dataset:
+        if x["id"] in used_ids:
+            continue
+        response = model.respond(
+            x["messages"],
+            max_tokens=args.max_tokens_per_turn,
+            max_context_size=args.max_context_size
+        )
+        x["response"] = response
+        print(response)
+        
 
 
 
@@ -389,20 +396,10 @@ if __name__ == "__main__":
 # import boto3
 # from botocore.exceptions import ClientError
 # import os
-# from collections import defaultdict
+# 
 
 
-# def list_foundation_models():
-#     bedrock_client = boto3.client(service_name="bedrock", region_name="us-east-1")
-#     response = bedrock_client.list_foundation_models()['modelSummaries']
-#     model_dict = defaultdict(list)
-#     for model_item in response:
-#         model_dict[model_item['providerName']].append([model_item['modelName'], model_item['modelId']])
-#     for provider, models in model_dict.items():
-#         print(f"Provider: {provider}")
-#         models = sorted(models, key=lambda x: x[0])
-#         print(f"Models: {models}")
-#         print()
+
 
 
 # def call_LLM():
@@ -440,7 +437,36 @@ if __name__ == "__main__":
     
 
 # if __name__ == '__main__':
-#     # list_foundation_models()
+#     # 
 #     call_LLM()
 
 
+# Provider: Anthropic
+# Models: [['Claude', 'anthropic.claude-v2:0:18k'], ['Claude', 'anthropic.claude-v2:0:100k'], ['Claude', 'anthropic.claude-v2:1:18k'], ['Claude', 'anthropic.claude-v2:1:200k'], ['Claude', 'anthropic.claude-v2:1'], ['Claude', 'anthropic.claude-v2'], ['Claude 3 Haiku', 'anthropic.claude-3-haiku-20240307-v1:0:48k'], ['Claude 3 Haiku', 'anthropic.claude-3-haiku-20240307-v1:0:200k'], ['Claude 3 Haiku', 'anthropic.claude-3-haiku-20240307-v1:0'], ['Claude 3 Opus', 'anthropic.claude-3-opus-20240229-v1:0:12k'], ['Claude 3 Opus', 'anthropic.claude-3-opus-20240229-v1:0:28k'], ['Claude 3 Opus', 'anthropic.claude-3-opus-20240229-v1:0:200k'], ['Claude 3 Opus', 'anthropic.claude-3-opus-20240229-v1:0'], 
+# ['Claude 3 Sonnet', 'anthropic.claude-3-sonnet-20240229-v1:0:28k'], ['Claude 3 Sonnet', 'anthropic.claude-3-sonnet-20240229-v1:0:200k'], 
+# ['Claude 3 Sonnet', 'anthropic.claude-3-sonnet-20240229-v1:0'], ['Claude 3.5 Haiku', 'anthropic.claude-3-5-haiku-20241022-v1:0'], 
+# ['Claude 3.5 Sonnet', 'anthropic.claude-3-5-sonnet-20240620-v1:0'], ['Claude 3.5 Sonnet v2', 'anthropic.claude-3-5-sonnet-20241022-v2:0'], 
+# ['Claude 3.7 Sonnet', 'anthropic.claude-3-7-sonnet-20250219-v1:0'], ['Claude Instant', 'anthropic.claude-instant-v1:2:100k'], 
+# ['Claude Instant', 'anthropic.claude-instant-v1'], ['Claude Opus 4', 'anthropic.claude-opus-4-20250514-v1:0'], 
+# ['Claude Opus 4.1', 'anthropic.claude-opus-4-1-20250805-v1:0'], ['Claude Sonnet 4', 'anthropic.claude-sonnet-4-20250514-v1:0']]
+
+# Provider: Amazon
+# Models: [['Nova Canvas', 'amazon.nova-canvas-v1:0'], ['Nova Lite', 'amazon.nova-lite-v1:0:24k'], ['Nova Lite', 'amazon.nova-lite-v1:0:300k'], ['Nova Lite', 'amazon.nova-lite-v1:0'], ['Nova Micro', 'amazon.nova-micro-v1:0:24k'], ['Nova Micro', 'amazon.nova-micro-v1:0:128k'], ['Nova Micro', 'amazon.nova-micro-v1:0'], ['Nova Premier', 'amazon.nova-premier-v1:0:8k'], ['Nova Premier', 'amazon.nova-premier-v1:0:20k'], ['Nova Premier', 'amazon.nova-premier-v1:0:1000k'], ['Nova Premier', 'amazon.nova-premier-v1:0:mm'], ['Nova Premier', 'amazon.nova-premier-v1:0'], ['Nova Pro', 'amazon.nova-pro-v1:0:24k'], ['Nova Pro', 'amazon.nova-pro-v1:0:300k'], ['Nova Pro', 'amazon.nova-pro-v1:0'], ['Nova Reel', 'amazon.nova-reel-v1:0'], ['Nova Reel', 'amazon.nova-reel-v1:1'], ['Nova Sonic', 'amazon.nova-sonic-v1:0'], ['Titan Embeddings G1 - Text', 'amazon.titan-embed-text-v1:2:8k'], ['Titan Embeddings G1 - Text', 'amazon.titan-embed-text-v1'], ['Titan Image Generator G1', 'amazon.titan-image-generator-v1:0'], ['Titan Image Generator G1', 'amazon.titan-image-generator-v1'], ['Titan Image Generator G1 v2', 'amazon.titan-image-generator-v2:0'], ['Titan Multimodal Embeddings G1', 'amazon.titan-embed-image-v1:0'], ['Titan Multimodal Embeddings G1', 'amazon.titan-embed-image-v1'], ['Titan Text Embeddings V2', 'amazon.titan-embed-text-v2:0:8k'], ['Titan Text Embeddings V2', 'amazon.titan-embed-text-v2:0'], ['Titan Text Embeddings v2', 'amazon.titan-embed-g1-text-02'], ['Titan Text G1 - Express', 'amazon.titan-text-express-v1:0:8k'], ['Titan Text G1 - Express', 'amazon.titan-text-express-v1'], ['Titan Text G1 - Lite', 'amazon.titan-text-lite-v1:0:4k'], ['Titan Text G1 - Lite', 'amazon.titan-text-lite-v1'], ['Titan Text G1 - Premier', 'amazon.titan-text-premier-v1:0'], ['Titan Text Large', 'amazon.titan-tg1-large']]
+
+# Provider: Stability AI
+# Models: [['SDXL 1.0', 'stability.stable-diffusion-xl-v1:0'], ['SDXL 1.0', 'stability.stable-diffusion-xl-v1']]
+
+# Provider: AI21 Labs
+# Models: [['Jamba 1.5 Large', 'ai21.jamba-1-5-large-v1:0'], ['Jamba 1.5 Mini', 'ai21.jamba-1-5-mini-v1:0'], ['Jamba-Instruct', 'ai21.jamba-instruct-v1:0']]
+
+# Provider: Cohere
+# Models: [['Command R', 'cohere.command-r-v1:0'], ['Command R+', 'cohere.command-r-plus-v1:0'], ['Embed English', 'cohere.embed-english-v3:0:512'], ['Embed English', 'cohere.embed-english-v3'], ['Embed Multilingual', 'cohere.embed-multilingual-v3:0:512'], ['Embed Multilingual', 'cohere.embed-multilingual-v3']]
+
+# Provider: DeepSeek
+# Models: [['DeepSeek-R1', 'deepseek.r1-v1:0']]
+
+# Provider: Meta
+# Models: [['Llama 3 70B Instruct', 'meta.llama3-70b-instruct-v1:0'], ['Llama 3 8B Instruct', 'meta.llama3-8b-instruct-v1:0'], ['Llama 3.1 70B Instruct', 'meta.llama3-1-70b-instruct-v1:0'], ['Llama 3.1 8B Instruct', 'meta.llama3-1-8b-instruct-v1:0'], ['Llama 3.2 11B Instruct', 'meta.llama3-2-11b-instruct-v1:0'], ['Llama 3.2 1B Instruct', 'meta.llama3-2-1b-instruct-v1:0'], ['Llama 3.2 3B Instruct', 'meta.llama3-2-3b-instruct-v1:0'], ['Llama 3.2 90B Instruct', 'meta.llama3-2-90b-instruct-v1:0'], ['Llama 3.3 70B Instruct', 'meta.llama3-3-70b-instruct-v1:0'], ['Llama 4 Maverick 17B Instruct', 'meta.llama4-maverick-17b-instruct-v1:0'], ['Llama 4 Scout 17B Instruct', 'meta.llama4-scout-17b-instruct-v1:0']]
+
+# Provider: Mistral AI
+# Models: [['Mistral 7B Instruct', 'mistral.mistral-7b-instruct-v0:2'], ['Mistral Large (24.02)', 'mistral.mistral-large-2402-v1:0'], ['Mistral Small (24.02)', 'mistral.mistral-small-2402-v1:0'], ['Mixtral 8x7B Instruct', 'mistral.mixtral-8x7b-instruct-v0:1'], ['Pixtral Large (25.02)', 'mistral.pixtral-large-2502-v1:0']]
