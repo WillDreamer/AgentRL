@@ -11,6 +11,12 @@ model_config:
   api_key: "1234567890"
 
 model_info:
+  claude-3-5-sonnet:
+    provider_name: bedrock
+    model_name: anthropic.claude-3-5-sonnet-20240620-v1:0
+    generation_kwargs:
+      temperature: 0
+      max_tokens: 512
   Qwen2.5-7B-Instruct:
     provider_name: together
     model_name: Qwen/Qwen2.5-7B-Instruct-Turbo

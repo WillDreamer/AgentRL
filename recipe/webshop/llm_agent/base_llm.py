@@ -4,10 +4,11 @@ from typing import List, Dict, Optional, Union, Any, Tuple
 import os
 import asyncio
 import time
-
+import boto3
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from together import AsyncTogether
+import json
 
 @dataclass
 class LLMResponse:
@@ -78,6 +79,34 @@ class DeepSeekProvider(LLMProvider):
             content=response.choices[0].message.content,
             model_name=response.model
         )
+
+
+class BedrockProvider(object):
+    
+    def __init__(self, model_name="anthropic.claude-3-haiku-20240307-v1:0",
+                 region="us-east-1"):
+        assert model_name.startswith("anthropic.") or model_name.startswith("us.anthropic.")
+        self.bedrock = boto3.client('bedrock-runtime', region_name=region)
+
+        super().__init__(model_name, region)
+
+    def generate(self, messages, **kwargs):
+        assert isinstance(messages, list)
+        payload = {
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "anthropic_version": "bedrock-2023-05-31"
+        }
+        retry = 3
+        while retry > 0:
+            try:
+                response = self.bedrock.invoke_model(body=json.dumps(payload),
+                                                    modelId=self.model_name)
+                return process_response(response)
+            except Exception as e:
+                retry -= 1
+                if retry == 0:
+                    raise e
 
 class AnthropicProvider(LLMProvider):
     """Anthropic Claude API provider implementation
@@ -167,6 +196,8 @@ class ConcurrentLLM:
                 self.provider = AnthropicProvider(model_name or "claude-3-7-sonnet-20250219", api_key)
             elif provider.lower() == "together":
                 self.provider = TogetherProvider(model_name or "meta-llama/Llama-3-70b-chat-hf", api_key)
+            elif provider.lower() == "bedrock":
+                self.provider = BedrockProvider(model_name or "anthropic.claude-3-5-sonnet-20240620-v1:0")
             else:
                 raise ValueError(f"Unknown provider: {provider}")
         
