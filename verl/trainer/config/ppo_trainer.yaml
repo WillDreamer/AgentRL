@@ -81,6 +81,8 @@ actor_rollout_ref:
       offload_policy: False # only for fsdp2, offload param\grad\optimizer during train
       reshard_after_forward: True # only for fsdp2, [True, False, int between 1 and fsdp_size]
       fsdp_size: -1
+    policy_loss:
+      loss_mode: vanilla
   ref:
     strategy: fsdp
     fsdp_config:

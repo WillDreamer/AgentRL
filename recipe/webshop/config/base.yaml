@@ -1,6 +1,4 @@
-hydra:
-  searchpath:
-    - file://verl/trainer/config
+
     
 defaults:
   - ppo_trainer # this is a symbolic link to the verl/verl/trainer/config/ppo_trainer.yaml file
@@ -44,6 +42,8 @@ actor_rollout_ref:
     grpo_advantage_length_weight: ${grpo_advantage_length_weight}
     optim:
       betas: [0.9, 0.999]
+    policy_loss:
+      loss_mode: vanilla
   ref:
     log_prob_micro_batch_size_per_gpu: ${micro_batch_size_per_gpu} # following micro_batch_size_per_gpu
   rollout:
@@ -103,7 +103,7 @@ trainer:
   generations_to_log_to_wandb: 
     train: 128 # TODO: will be implemented
     val: 20
-  logger: [ 'console' ]
+  logger: [ 'console', 'wandb' ]
 
 agent_proxy:
   max_context_window: -1 # set a value > 0 to enable context window for long trajectory

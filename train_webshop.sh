@@ -14,19 +14,38 @@ if [ "$WANDB_API_KEY" != "" ]; then
     export WANDB_DIR=${SAVE_PATH}
 fi
 
+# python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
+#     model_path=$MODEL \
+#     system.CUDA_VISIBLE_DEVICES=\"0,1,2,3,4,5,6,7\" \
+#     actor_rollout_ref.rollout.rollout_filter_ratio=$FILTER_RATIO \
+#     trainer.experiment_name="${TASK_NAME}-${REMARK}-ppo-filter${FILTER_RATIO}-${MODEL_SHORT}" \
+#     trainer.nnodes=1 \
+#     trainer.rollout_data_dir=log_rollout \
+#     agent_proxy.max_turn=5 \
+#     custom_envs.WebShop.max_actions_per_traj=5 \
+#     actor_rollout_ref.rollout.response_length=500 \
+#     actor_rollout_ref.rollout.max_model_len=15000 \
+#     actor_rollout_ref.rollout.max_num_batched_tokens=15000 \
+#     trainer.total_training_steps=400 \
+#     critic.optim.lr=5e-7 \
+#     actor_rollout_ref.actor.optim.lr=5e-7\
+
+
 python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     model_path=$MODEL \
     system.CUDA_VISIBLE_DEVICES=\"0,1,2,3,4,5,6,7\" \
     actor_rollout_ref.rollout.rollout_filter_ratio=$FILTER_RATIO \
-    trainer.experiment_name="${TASK_NAME}-${REMARK}-ppo-filter${FILTER_RATIO}-${MODEL_SHORT}" \
+    algorithm.adv_estimator=grpo \
+    trainer.experiment_name="${TASK_NAME}-${REMARK}-gspo-filter${FILTER_RATIO}-${MODEL_SHORT}" \
     trainer.nnodes=1 \
     trainer.rollout_data_dir=log_rollout \
     agent_proxy.max_turn=5 \
     custom_envs.WebShop.max_actions_per_traj=5 \
-    actor_rollout_ref.rollout.response_length=500 \
+    actor_rollout_ref.rollout.response_length=1000 \
     actor_rollout_ref.rollout.max_model_len=15000 \
     actor_rollout_ref.rollout.max_num_batched_tokens=15000 \
     trainer.total_training_steps=400 \
-    critic.optim.lr=5e-7 \
-    actor_rollout_ref.actor.optim.lr=5e-7
+    actor_rollout_ref.actor.optim.lr=5e-7\
+    actor_rollout_ref.actor.entropy_coeff=0 \
+    actor_rollout_ref.actor.policy_loss.loss_mode="gspo" \
     

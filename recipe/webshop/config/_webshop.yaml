@@ -4,6 +4,7 @@ hydra:
     
 defaults:
   - base
+  - _self_
 
 micro_batch_size_per_gpu: 1
 ppo_mini_batch_size: 32

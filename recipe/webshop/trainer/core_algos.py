@@ -1,3 +1,5 @@
+import torch
+import verl.utils.torch_functional as verl_F
 from verl.trainer.ppo.core_algos import *
 
 # supported by Kangrui Wang
