@@ -99,7 +99,7 @@ trainer:
   generations_to_log_to_wandb: 
     train: 128 # TODO: will be implemented
     val: 20
-  logger: [ 'console' ]
+  logger: [ 'console','wandb' ]
 
 agent_proxy:
   max_context_window: -1 # set a value > 0 to enable context window for long trajectory
