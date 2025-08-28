@@ -74,7 +74,9 @@ def get_masks_and_scores(input_ids: torch.Tensor, tokenizer: AutoTokenizer, all_
 
             #* check if contains target_id
             if not (row_input[idxs_r] == int(151668)).any():
-                loss_mask[i][idxs_r] = False  
+                # loss_mask[i][idxs_r] = False  
+                loss_mask[i] = False
+                break 
     
     score_tensor = torch.zeros_like(input_ids, dtype=torch.float32)
     if use_turn_scores:
