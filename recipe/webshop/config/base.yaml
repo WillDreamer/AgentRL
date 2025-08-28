@@ -1,7 +1,3 @@
-hydra:
-  searchpath:
-    - file://verl/trainer/config
-    
 defaults:
   - ppo_trainer # this is a symbolic link to the verl/verl/trainer/config/ppo_trainer.yaml file
   - envs
