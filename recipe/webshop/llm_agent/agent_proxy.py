@@ -82,7 +82,8 @@ class ApiCallingWrapperWg:
         self.llm = ConcurrentLLM(
 			provider=model_info.provider_name,
             model_name=model_info.model_name,
-            max_concurrency=config.model_config.max_concurrency
+            max_concurrency=config.model_config.max_concurrency,
+			api_key=config.model_config.api_key
         )
         
         print(f'API-based LLM ({model_info.provider_name} - {model_info.model_name}) initialized')

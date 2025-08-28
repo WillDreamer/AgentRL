@@ -1,6 +1,6 @@
 
-from webshop.llm_agent.ctx_manager import ContextManager
-from webshop.llm_agent.es_manager import EnvStateManager
+from recipe.webshop.llm_agent.ctx_manager_old import ContextManager
+from recipe.webshop.llm_agent.es_manager_old import EnvStateManager
 from vllm import LLM, SamplingParams
 from verl.single_controller.ray.base import RayWorkerGroup
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -9,10 +9,10 @@ import hydra
 import os
 from typing import List, Dict
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
-from webshop.llm_agent.base_llm import ConcurrentLLM
-from webshop.llm_agent.agent_proxy import ApiCallingWrapperWg, VllmWrapperWg, LLMAgentProxy
+from recipe.webshop.llm_agent.base_llm import ConcurrentLLM
+from recipe.webshop.llm_agent.agent_proxy_old import ApiCallingWrapperWg, VllmWrapperWg, LLMAgentProxy
 
-@hydra.main(version_base=None, config_path="../config", config_name="base")
+@hydra.main(version_base=None, config_path="./config", config_name="base_eval")
 def main(config):
 	# detect config name from python -m webshop.llm_agent.agent_proxy --config_name frozen_lake
 	os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"

@@ -1,9 +1,14 @@
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
 defaults:
   - base # this is a symbolic link to the verl/verl/trainer/config/ppo_trainer.yaml file
 
 model_config:
   model_name: gpt-4o # should be registered in model_info
   max_concurrency: 16
+  api_key: "1234567890"
 
 model_info:
   Qwen2.5-7B-Instruct:
@@ -44,13 +49,12 @@ model_info:
       max_completion_tokens: 512
 
 
-
 es_manager:
   val:
     env_groups: 256
     group_size: 1 # should be set to 1 because val temperature is set to 0 and same prompt leads to same output
     env_configs:
-      tags: ["SimpleSokoban"]
+      tags: ["WebShop"]
       n_groups: [256] # If not set, all env names divide nums equally. Under the same group, the env config and env seed (prompt) are equal in each generation
 
 

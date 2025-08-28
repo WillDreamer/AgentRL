@@ -1,5 +1,5 @@
-from .ctx_manager import ContextManager
-from .es_manager import EnvStateManager
+from .ctx_manager_old import ContextManager
+from .es_manager_old import EnvStateManager
 from vllm import LLM, SamplingParams
 from verl.single_controller.ray.base import RayWorkerGroup
 from transformers import AutoTokenizer, AutoModelForCausalLM
