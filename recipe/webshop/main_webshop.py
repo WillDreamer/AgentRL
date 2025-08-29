@@ -551,7 +551,7 @@ class TaskRunner:
         if config.critic.strategy in {"fsdp", "fsdp2"}:
             use_legacy_worker_impl = config.trainer.get("use_legacy_worker_impl", "auto")
             if use_legacy_worker_impl in ["auto", "enable"]:
-                from verl.workers.fsdp_workers import CriticWorker
+                from recipe.webshop.workers.fsdp_workers import CriticWorker
             elif use_legacy_worker_impl == "disable":
                 from verl.workers.roles import CriticWorker
 
@@ -590,7 +590,7 @@ class TaskRunner:
 
         if config.reward_model.enable:
             if config.reward_model.strategy in {"fsdp", "fsdp2"}:
-                from verl.workers.fsdp_workers import RewardModelWorker
+                from recipe.webshop.workers.fsdp_workers import RewardModelWorker
             elif config.reward_model.strategy == "megatron":
                 from verl.workers.megatron_workers import RewardModelWorker
             else:
