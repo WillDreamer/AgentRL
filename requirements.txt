@@ -6,22 +6,22 @@ dill
 flash-attn
 hydra-core
 liger-kernel
-numpy
+numpy<2.0.0
 pandas
 peft
 pyarrow>=19.0.0
 pybind11
 pylatexenc
 pre-commit
-qwen_vl_utils
 ray[default]
-tensordict<=0.6.2
+tensordict>=0.8.0,<=0.9.1,!=0.9.0
 torchdata
 transformers
-# vllm==0.8.5
+# vllm==0.8.4
 wandb
 packaging>=20.0
 uvicorn
 fastapi
-math-verify
-word2number
+latex2sympy2_extended
+math_verify
+tensorboard

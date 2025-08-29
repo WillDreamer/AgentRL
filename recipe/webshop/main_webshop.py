@@ -508,6 +508,102 @@ def run_ppo(config) -> None:
 
 @ray.remote(num_cpus=1)  # please make sure main_task is not scheduled on head
 class TaskRunner:
+    def __init__(self):
+        self.role_worker_mapping = {}
+        self.mapping = {}
+    
+    def add_actor_rollout_worker(self, config):
+        """Add actor rollout worker based on the actor strategy."""
+        from verl.single_controller.ray import RayWorkerGroup
+
+        if config.actor_rollout_ref.actor.strategy in {"fsdp", "fsdp2"}:
+            from recipe.webshop.workers.fsdp_workers import ActorRolloutRefWorker, AsyncActorRolloutRefWorker
+
+            actor_rollout_cls = (
+                AsyncActorRolloutRefWorker
+                if config.actor_rollout_ref.rollout.mode == "async"
+                else ActorRolloutRefWorker
+            )
+            ray_worker_group_cls = RayWorkerGroup
+
+        elif config.actor_rollout_ref.actor.strategy == "megatron":
+            from verl.workers.megatron_workers import ActorRolloutRefWorker, AsyncActorRolloutRefWorker
+
+            actor_rollout_cls = (
+                AsyncActorRolloutRefWorker
+                if config.actor_rollout_ref.rollout.mode == "async"
+                else ActorRolloutRefWorker
+            )
+            ray_worker_group_cls = RayWorkerGroup
+
+        else:
+            raise NotImplementedError
+
+        from verl.trainer.ppo.ray_trainer import Role
+
+        self.role_worker_mapping[Role.ActorRollout] = ray.remote(actor_rollout_cls)
+
+        return actor_rollout_cls, ray_worker_group_cls
+
+    def add_critic_worker(self, config):
+        """Add critic worker to role mapping."""
+        if config.critic.strategy in {"fsdp", "fsdp2"}:
+            use_legacy_worker_impl = config.trainer.get("use_legacy_worker_impl", "auto")
+            if use_legacy_worker_impl in ["auto", "enable"]:
+                from verl.workers.fsdp_workers import CriticWorker
+            elif use_legacy_worker_impl == "disable":
+                from verl.workers.roles import CriticWorker
+
+                print("Using new worker implementation")
+            else:
+                raise ValueError(f"Invalid use_legacy_worker_impl: {use_legacy_worker_impl}")
+
+        elif config.critic.strategy == "megatron":
+            from verl.workers.megatron_workers import CriticWorker
+
+        else:
+            raise NotImplementedError
+
+        from verl.trainer.ppo.ray_trainer import Role
+
+        self.role_worker_mapping[Role.Critic] = ray.remote(CriticWorker)
+    
+    def init_resource_pool_mgr(self, config):
+        """Initialize resource pool manager."""
+        from verl.trainer.ppo.ray_trainer import Role
+
+        global_pool_id = "global_pool"
+        resource_pool_spec = {
+            global_pool_id: [config.trainer.n_gpus_per_node] * config.trainer.nnodes,
+        }
+        self.mapping[Role.ActorRollout] = global_pool_id
+        self.mapping[Role.Critic] = global_pool_id
+        from verl.trainer.ppo.ray_trainer import ResourcePoolManager
+
+        resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=self.mapping)
+        return resource_pool_manager
+
+    def add_reward_model_worker(self, config):
+        """Add reward model worker if enabled."""
+        from verl.trainer.ppo.ray_trainer import Role
+
+        if config.reward_model.enable:
+            if config.reward_model.strategy in {"fsdp", "fsdp2"}:
+                from verl.workers.fsdp_workers import RewardModelWorker
+            elif config.reward_model.strategy == "megatron":
+                from verl.workers.megatron_workers import RewardModelWorker
+            else:
+                raise NotImplementedError
+            self.role_worker_mapping[Role.RewardModel] = ray.remote(RewardModelWorker)
+            self.mapping[Role.RewardModel] = "global_pool"
+
+    def add_ref_policy_worker(self, config, ref_policy_cls):
+        """Add reference policy worker if KL loss or KL reward is used."""
+        from verl.trainer.ppo.ray_trainer import Role
+
+        if config.algorithm.use_kl_in_reward or config.actor_rollout_ref.actor.use_kl_loss:
+            self.role_worker_mapping[Role.RefPolicy] = ray.remote(ref_policy_cls)
+            self.mapping[Role.RefPolicy] = "global_pool"
 
     def run(self, config):
         from verl.utils.fs import copy_to_local
@@ -522,99 +618,43 @@ class TaskRunner:
         tokenizer = hf_tokenizer(local_path)
         processor = hf_processor(local_path, use_fast=True)  # used for multimodal LLM, could be none
 
-        # define worker classes
-        if config.actor_rollout_ref.actor.strategy == 'fsdp':
-            assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
-            from recipe.webshop.workers.fsdp_workers import ActorRolloutRefWorker, CriticWorker
-            from verl.single_controller.ray import RayWorkerGroup
-            ray_worker_group_cls = RayWorkerGroup
+        actor_rollout_cls, ray_worker_group_cls = self.add_actor_rollout_worker(config)
+        self.add_critic_worker(config)
 
-        # elif config.actor_rollout_ref.actor.strategy == 'megatron':
-        #     assert  config.actor_rollout_ref.actor.strategy == config.critic.strategy
-        #     from verl.workers.megatron_workers import ActorRolloutRefWorker, CriticWorker
-        #     from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
-        #     ray_worker_group_cls = NVMegatronRayWorkerGroup
-
-        else:
-            raise NotImplementedError
-
-        from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role
-
-        # role_worker_mapping = {
-        #     Role.ActorRollout: ray.remote(ActorRolloutRefWorker),
-        #     Role.Critic: ray.remote(CriticWorker),
-        #     Role.RefPolicy: ray.remote(ActorRolloutRefWorker)
-        # }
-        role_worker_mapping = {
-            Role.ActorRollout: ray.remote(ActorRolloutRefWorker),
-            Role.Critic: ray.remote(CriticWorker),
-        }
-        if config.actor_rollout_ref.actor.use_ref:
-            print("[DEBUG] using ref policy")
-            role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
-        else:
-            print("[DEBUG] not using ref policy, setting use_kl_loss to False")
-            config.actor_rollout_ref.actor.use_kl_loss = False
-        global_pool_id = 'global_pool'
-        resource_pool_spec = {
-            global_pool_id: [config.trainer.n_gpus_per_node] * config.trainer.nnodes,
-        }
-
-        mapping = {
-            Role.ActorRollout: global_pool_id,
-            Role.Critic: global_pool_id,
-        }
-        if config.actor_rollout_ref.actor.use_ref:
-            mapping[Role.RefPolicy] = global_pool_id
-        # mapping = {
-        #     Role.ActorRollout: global_pool_id,
-        #     Role.Critic: global_pool_id,
-        #     Role.RefPolicy: global_pool_id,
-        # }
-
-        # we should adopt a multi-source reward function here
+        # We should adopt a multi-source reward function here:
         # - for rule-based rm, we directly call a reward score
         # - for model-based rm, we call a model
         # - for code related prompt, we send to a sandbox if there are test cases
-        # - finally, we combine all the rewards together
-        # - The reward type depends on the tag of the data
-        if config.reward_model.enable:
-            if config.reward_model.strategy == 'fsdp':
-                from recipe.webshop.workers.fsdp_workers import RewardModelWorker
-            elif config.reward_model.strategy == 'megatron':
-                from verl.workers.megatron_workers import RewardModelWorker
-            else:
-                raise NotImplementedError
-            role_worker_mapping[Role.RewardModel] = ray.remote(RewardModelWorker)
-            mapping[Role.RewardModel] = global_pool_id
+        # finally, we combine all the rewards together
+        # The reward type depends on the tag of the data
+        self.add_reward_model_worker(config)
 
-        # reward_manager_name = config.reward_model.get("reward_manager", "dummy")
-        # print(f'reward_manager_name: {reward_manager_name}')
-        # if reward_manager_name == 'dummy':
+        # Add a reference policy worker if KL loss or KL reward is used.
+        self.add_ref_policy_worker(config, actor_rollout_cls)
+
+        from verl.utils.config import validate_config
+        from verl.trainer.ppo.utils import need_critic, need_reference_policy
+        validate_config(
+            config=config,
+            use_reference_policy=need_reference_policy(self.role_worker_mapping),
+            use_critic=need_critic(config),
+        )
+
         print("using dummy reward manager")
         reward_manager_cls = DummyRewardManager
-        # elif reward_manager_name == 'naive':
-        #     from verl.workers.reward_manager import NaiveRewardManager
-        #     reward_manager_cls = NaiveRewardManager
-        # elif reward_manager_name == 'prime':
-        #     from verl.workers.reward_manager import PrimeRewardManager
-        #     reward_manager_cls = PrimeRewardManager
-        # else:
-        #     raise NotImplementedError
 
         compute_score = get_custom_reward_fn(config)
         reward_fn = reward_manager_cls(tokenizer=tokenizer, num_examine=0, compute_score=compute_score)
-
         # Note that we always use function-based RM for validation
         val_reward_fn = reward_manager_cls(tokenizer=tokenizer, num_examine=1, compute_score=compute_score)
 
-        resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
+        resource_pool_manager = self.init_resource_pool_mgr(config)
 
         trainer = RayAgentTrainer(
             config=config,
             tokenizer=tokenizer,
             processor=processor,
-            role_worker_mapping=role_worker_mapping,
+            role_worker_mapping=self.role_worker_mapping,
             resource_pool_manager=resource_pool_manager,
             ray_worker_group_cls=ray_worker_group_cls,
             reward_fn=reward_fn,

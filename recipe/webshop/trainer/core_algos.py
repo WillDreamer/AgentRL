@@ -1,3 +1,4 @@
+import torch
 from verl.trainer.ppo.core_algos import *
 
 # supported by Kangrui Wang

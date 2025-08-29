@@ -28,8 +28,8 @@ from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 from verl.single_controller.base import Worker
 from verl.single_controller.ray import RayClassWithInitArgs, RayResourcePool, RayWorkerGroup
 from verl.single_controller.ray.base import create_colocated_worker_cls
-from recipe.webshop.trainer import core_algos
-from recipe.webshop.trainer.core_algos import agg_loss
+from verl.trainer.ppo import core_algos
+from verl.trainer.ppo.core_algos import agg_loss
 from verl.trainer.ppo.metric_utils import (
     compute_data_metrics,
     compute_throughout_metrics,
@@ -42,12 +42,12 @@ from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
 from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
-from verl.workers.rollout.async_server import AsyncLLMServerManager
+from verl.workers.rollout.sglang_rollout.async_sglang_server import AsyncSGLangServer
 
 WorkerType = Type[Worker]
 
 
-from verl.trainer.ppo.ray_trainer import Role, ResourcePoolManager, compute_response_mask, _timer, apply_kl_penalty, AdvantageEstimator
+from verl.trainer.ppo.ray_trainer import Role, ResourcePoolManager, compute_response_mask, marked_timer, apply_kl_penalty, AdvantageEstimator
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer as VerlRayPPOTrainer
 
 import torch
@@ -375,7 +375,8 @@ class RayAgentTrainer(VerlRayPPOTrainer):
         self.async_rollout_mode = False
         if self.config.actor_rollout_ref.rollout.mode == "async":
             self.async_rollout_mode = True
-            self.async_rollout_manager = AsyncLLMServerManager(
+            breakpoint()
+            self.async_rollout_manager = AsyncSGLangServer(
                 config=self.config.actor_rollout_ref,
                 worker_group=self.actor_rollout_wg,
             )
@@ -437,12 +438,12 @@ class RayAgentTrainer(VerlRayPPOTrainer):
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
-        if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
-            val_metrics = self._validate()
-            pprint(f"Initial validation metrics: {val_metrics}")
-            logger.log(data=val_metrics, step=self.global_steps)
-            if self.config.trainer.get("val_only", False):
-                return
+        # if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
+        #     val_metrics = self._validate()
+        #     pprint(f"Initial validation metrics: {val_metrics}")
+        #     logger.log(data=val_metrics, step=self.global_steps)
+        #     if self.config.trainer.get("val_only", False):
+        #         return
 
         # add tqdm
         progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")
@@ -508,9 +509,9 @@ class RayAgentTrainer(VerlRayPPOTrainer):
             batch: DataProto = DataProto()
             is_last_step = self.global_steps >= self.total_training_steps
 
-            with _timer("step", timing_raw):
+            with marked_timer("step", timing_raw):
                 # generate a batch
-                with _timer("gen", timing_raw):
+                with marked_timer("gen", timing_raw):
                     batch = self.agent_proxy.rollout(batch, val=False)
                     batch, metrics = _filter_rollout(batch)
                     metrics.update({"train/" + key: value for key, value in batch.meta_info["metrics"].items()})
@@ -526,7 +527,7 @@ class RayAgentTrainer(VerlRayPPOTrainer):
                     # TODO: check if this is correct. Not tested yer
                     logger.log("[NotImplemented] REMAX implementation is not tested yet in recipe.webshop. Exiting.")
                     exit()
-                    with _timer("gen_max", timing_raw):
+                    with marked_timer("gen_max", timing_raw):
                         gen_baseline_batch = deepcopy(batch)
                         gen_baseline_batch.meta_info["do_sample"] = False
                         gen_baseline_output = self.agent_proxy.rollout(gen_baseline_batch, val=False)
@@ -564,7 +565,7 @@ class RayAgentTrainer(VerlRayPPOTrainer):
                 batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
 
                 if self.use_rm:
-                    with _timer("reward", timing_raw):
+                    with marked_timer("reward", timing_raw):
                     # compute reward model score
                         reward_tensor = self.rm_wg.compute_rm_score(batch)
                         batch = batch.union(reward_tensor)
@@ -575,7 +576,7 @@ class RayAgentTrainer(VerlRayPPOTrainer):
                     reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
                 # recompute old_log_probs
-                with _timer("old_log_prob", timing_raw):
+                with marked_timer("old_log_prob", timing_raw):
                     old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                     batch = batch.union(old_log_prob)
                     avg_old_log_prob = masked_mean(old_log_prob.batch["old_log_probs"], batch.batch["response_mask"])
@@ -583,7 +584,7 @@ class RayAgentTrainer(VerlRayPPOTrainer):
 
                 if self.use_reference_policy:
                     # compute reference log_prob
-                    with _timer("ref", timing_raw):
+                    with marked_timer("ref", timing_raw):
                         if not self.ref_in_actor:
                             ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
                         else:
@@ -594,11 +595,11 @@ class RayAgentTrainer(VerlRayPPOTrainer):
 
                 # compute values
                 if self.use_critic:
-                    with _timer("values", timing_raw):
+                    with marked_timer("values", timing_raw):
                         values = self.critic_wg.compute_values(batch)
                         batch = batch.union(values)
 
-                with _timer("adv", timing_raw):
+                with marked_timer("adv", timing_raw):
                     # we combine with rule-based rm
                     reward_extra_infos_dict: dict[str, list]
                     if self.config.reward_model.launch_reward_fn_async:
@@ -642,7 +643,7 @@ class RayAgentTrainer(VerlRayPPOTrainer):
 
                 # update critic
                 if self.use_critic:
-                    with _timer("update_critic", timing_raw):
+                    with marked_timer("update_critic", timing_raw):
                         critic_output = self.critic_wg.update_critic(batch)
                     critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
                     metrics.update(critic_output_metrics)
@@ -650,7 +651,7 @@ class RayAgentTrainer(VerlRayPPOTrainer):
                 # implement critic warmup
                 if self.config.trainer.critic_warmup <= self.global_steps:
                     # update actor
-                    with _timer("update_actor", timing_raw):
+                    with marked_timer("update_actor", timing_raw):
                         batch.meta_info["multi_turn"] = True
                         actor_output = self.actor_rollout_wg.update_actor(batch)
                     actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
@@ -659,7 +660,7 @@ class RayAgentTrainer(VerlRayPPOTrainer):
                 # Log rollout generations if enabled
                 rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
                 if rollout_data_dir:
-                    with _timer("dump_rollout_generations", timing_raw):
+                    with marked_timer("dump_rollout_generations", timing_raw):
                         print(batch.batch.keys())
                         inputs = self.tokenizer.batch_decode(batch.batch["input_ids"], skip_special_tokens=True)
                         outputs = self.tokenizer.batch_decode(batch.batch["responses"], skip_special_tokens=True)
@@ -674,14 +675,14 @@ class RayAgentTrainer(VerlRayPPOTrainer):
 
                 # validate
                 if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
-                    with _timer("testing", timing_raw):
+                    with marked_timer("testing", timing_raw):
                         val_metrics: dict = self._validate()
                         if is_last_step:
                             last_val_metrics = val_metrics
                     metrics.update(val_metrics)
 
                 if self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
-                    with _timer("save_checkpoint", timing_raw):
+                    with marked_timer("save_checkpoint", timing_raw):
                         self._save_checkpoint()
 
             # collect metrics

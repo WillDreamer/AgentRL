@@ -1,7 +1,4 @@
-hydra:
-  searchpath:
-    - file://verl/trainer/config
-    
+
 defaults:
   - ppo_trainer # this is a symbolic link to the verl/verl/trainer/config/ppo_trainer.yaml file
   - envs
@@ -103,7 +100,7 @@ trainer:
   generations_to_log_to_wandb: 
     train: 128 # TODO: will be implemented
     val: 20
-  logger: [ 'console' ]
+  logger: [ 'console', ]
 
 agent_proxy:
   max_context_window: -1 # set a value > 0 to enable context window for long trajectory
