@@ -10,43 +10,32 @@ seed:
   train: 10000
   val: 123
 
-micro_batch_size_per_gpu: 2  # Batch size for each GPU during training
-ppo_mini_batch_size: 32      # Batch size for PPO policy updates, it should be divisible by (micro_batch_size_per_gpu * n_gpus_per_node)
-model_path: Qwen/Qwen3-32B
 enable_response_mask: True # Enabling response mask could improve stability of rollout/old_log_prob, as P(st|history) are no longer calculated in loss here. See https://docs.google.com/document/d/1bg7obeiKTExuHHBl5uOiSpec5uLDZ2Tgvxy6li5pHX4/edit?usp=sharing for more details.
-grpo_advantage_length_weight: False # if you do not enable this and critic/advantage_estimator is GRPO, and the critic/advantages/mean is too low, then you can try enabling this to encourage reasoning and forbid collapse
 
-lora:
-  rank: 0
-  alpha: 16
-  target_modules: all-linear
 
 actor_rollout_ref:
   model:
-    path: ${model_path}
-    lora_rank: ${lora.rank}
-    lora_alpha: ${lora.alpha}
-    target_modules: ${lora.target_modules}
+    path: Qwen/Qwen3-4B
+    lora_rank: 0
+    lora_alpha: 16
+    target_modules: all-linear
   actor:
-    ppo_mini_batch_size: ${ppo_mini_batch_size}  # by default, ppo_mini_batch_size = train_batch_size / 4
-    micro_batch_size_per_gpu: ${micro_batch_size_per_gpu} # following micro_batch_size_per_gpu
-    ppo_micro_batch_size_per_gpu: ${micro_batch_size_per_gpu} # following micro_batch_size_per_gpu
-    use_ref: True
-    entropy_coeff: 0.001
+    ppo_mini_batch_size: 32  
+    micro_batch_size_per_gpu: 1
+    ppo_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.micro_batch_size_per_gpu} 
     use_kl_loss: False
+    entropy_coeff: 0.001
     kl_loss_coef: 0.000
     kl_loss_type: kl
     clip_ratio_low: 0.2
     clip_ratio_high: 0.28
-    grpo_advantage_length_weight: ${grpo_advantage_length_weight}
     optim:
       betas: [0.9, 0.999]
   ref:
-    log_prob_micro_batch_size_per_gpu: ${micro_batch_size_per_gpu} # following micro_batch_size_per_gpu
+    log_prob_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.micro_batch_size_per_gpu} # following micro_batch_size_per_gpu
   rollout:
-    log_prob_micro_batch_size_per_gpu: ${micro_batch_size_per_gpu} # following micro_batch_size_per_gpu
+    log_prob_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.micro_batch_size_per_gpu} # following micro_batch_size_per_gpu
     tensor_model_parallel_size: 8
-    data_parallel_size: 2
     max_model_len: 15000
     prompt_length: 1 # useless. Just put it here
     response_length: 500 # single-turn response length
@@ -63,13 +52,13 @@ actor_rollout_ref:
     tp_size_check: True
 
 critic:
-  ppo_mini_batch_size: ${ppo_mini_batch_size} # by default, ppo_mini_batch_size = train_batch_size / 4
-  ppo_micro_batch_size_per_gpu: ${micro_batch_size_per_gpu} # following micro_batch_size_per_gpu
+  ppo_mini_batch_size: ${actor_rollout_ref.actor.ppo_mini_batch_size} # by default, ppo_mini_batch_size = train_batch_size / 4
+  ppo_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.micro_batch_size_per_gpu} # following micro_batch_size_per_gpu
   model:
     path: ${model_path}
-    lora_rank: ${lora.rank}
-    lora_alpha: ${lora.alpha}
-    target_modules: ${lora.target_modules}
+    lora_rank: 0
+    lora_alpha: 16
+    target_modules: all-linear
   optim:
     betas: [0.9, 0.999]
 

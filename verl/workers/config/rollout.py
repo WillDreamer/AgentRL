@@ -165,3 +165,9 @@ class RolloutConfig(BaseConfig):
     sglang_engine_mode: str = "local"
 
     limit_images: Optional[int] = None
+
+    rollout_filter_ratio: float = 0.5
+
+    rollout_filter_type: str = "std"
+
+    tp_size_check: bool = True

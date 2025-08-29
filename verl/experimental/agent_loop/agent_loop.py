@@ -724,6 +724,7 @@ class AgentLoopManager:
         """
         if self.config.actor_rollout_ref.rollout.free_cache_engine:
             self.wake_up()
+        breakpoint()
         chunkes = prompts.chunk(len(self.agent_loop_workers))
         outputs = ray.get(
             [

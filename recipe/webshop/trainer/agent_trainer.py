@@ -42,7 +42,6 @@ from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
 from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
-from verl.workers.rollout.sglang_rollout.async_sglang_server import AsyncSGLangServer
 
 WorkerType = Type[Worker]
 
@@ -184,7 +183,8 @@ class RayAgentTrainer(VerlRayPPOTrainer):
         self.agent_proxy = LLMAgentProxy(
             config=self.config,
             actor_rollout_wg=self.actor_rollout_wg,
-            tokenizer=self.tokenizer
+            tokenizer=self.tokenizer,
+            async_rollout_manager=self.async_rollout_manager
         )
     def _maybe_log_generations(self, inputs, outputs, scores, _type="val"):
         """Log a table of validation samples to the configured logger (wandb or swanlab)"""
@@ -238,7 +238,7 @@ class RayAgentTrainer(VerlRayPPOTrainer):
             # pad to be divisible by dp_size
             import time
             start_time = time.time()
-            test_batch = self.agent_proxy.rollout(test_gen_batch, val=True)
+            test_batch = self.agent_proxy.rollout(test_gen_batch, val=True, async_rollout_mode=self.async_rollout_mode)
             end_time = time.time()
             print(f"validation generation time: {end_time - start_time} seconds")
             for key, value in test_batch.meta_info["metrics"].items():
@@ -375,11 +375,14 @@ class RayAgentTrainer(VerlRayPPOTrainer):
         self.async_rollout_mode = False
         if self.config.actor_rollout_ref.rollout.mode == "async":
             self.async_rollout_mode = True
-            breakpoint()
-            self.async_rollout_manager = AsyncSGLangServer(
-                config=self.config.actor_rollout_ref,
+            from verl.experimental.agent_loop import AgentLoopManager
+
+            self.async_rollout_manager = AgentLoopManager(
+                config=self.config,
                 worker_group=self.actor_rollout_wg,
             )
+        else:
+            self.async_rollout_manager = None
 
 
     def _save_checkpoint(self):
@@ -512,15 +515,14 @@ class RayAgentTrainer(VerlRayPPOTrainer):
             with marked_timer("step", timing_raw):
                 # generate a batch
                 with marked_timer("gen", timing_raw):
-                    batch = self.agent_proxy.rollout(batch, val=False)
+
+                    batch = self.agent_proxy.rollout(batch, val=False, async_rollout_mode=self.async_rollout_mode)
+
                     batch, metrics = _filter_rollout(batch)
                     metrics.update({"train/" + key: value for key, value in batch.meta_info["metrics"].items()})
 
                     inputs, outputs, scores = _process_batch_for_logging(batch)
                     # self._maybe_log_generations(inputs=inputs, outputs=outputs, scores=scores, _type="train")
-
-
-
 
 
                 if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:

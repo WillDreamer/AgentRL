@@ -351,6 +351,7 @@ class ContextManager:
             "env_ids": np.array([env_output["env_id"] for env_output in env_outputs], dtype=object),
             "group_ids": np.array([env_output["group_id"] for env_output in env_outputs], dtype=object),
             "messages_list": np.array(messages_list, dtype=object),
+            "raw_prompt":np.array(llm_input_texts, dtype=object)
         }
 
         if prepare_for_update:

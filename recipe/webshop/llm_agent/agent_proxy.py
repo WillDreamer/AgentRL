@@ -118,20 +118,24 @@ class LLMAgentProxy:
 	"""
 	The proxy means the llm agent is trying to generate some rollout **at this time**, **at this model state**, **at this env state from the env config**
 	"""
-	def __init__(self, config, actor_rollout_wg, tokenizer):
+	def __init__(self, config, actor_rollout_wg, tokenizer, async_rollout_manager=None):
 		self.config = config
 		self.train_ctx_manager = ContextManager(config, tokenizer, mode="train")
 		self.train_es_manager = EnvStateManager(config, mode="train")
 		self.val_ctx_manager = ContextManager(config, tokenizer, mode="val")
 		self.val_es_manager = EnvStateManager(config, mode="val")
 		self.actor_wg = actor_rollout_wg
+		self.async_rollout_manager = async_rollout_manager
 		self.tokenizer = tokenizer
 
-	def generate_sequences(self, lm_inputs: DataProto):
+	def generate_sequences(self, lm_inputs: DataProto, async_rollout_mode=False):
 		# TODO: add kv cache both for the vllm wrapper here and for verl vllm.
 		if isinstance(self.actor_wg, RayWorkerGroup):
 			padded_lm_inputs, pad_size = pad_dataproto_to_divisor(lm_inputs, self.actor_wg.world_size)
-			padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
+			if async_rollout_mode:
+				padded_lm_outputs = self.async_rollout_manager.generate_sequences(padded_lm_inputs)
+			else:
+				padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
 			# idx_ = 2
 			# tokens = padded_lm_outputs.batch['responses'][idx_][padded_lm_outputs.batch['responses'][idx_] != 151643]
 			# decoded_tokens = [self.tokenizer.decode([tid], skip_special_tokens=True) for tid in tokens]
@@ -146,7 +150,7 @@ class LLMAgentProxy:
 
 		return lm_outputs
 
-	def _handle_void_actions(self, lm_inputs: DataProto, lm_outputs: DataProto, max_retries: int = 1) -> DataProto:
+	def _handle_void_actions(self, lm_inputs: DataProto, lm_outputs: DataProto, max_retries: int = 1, async_rollout_mode=False) -> DataProto:
 		"""
 		Check for void actions (responses without <answer> tags) and regenerate them.
 		
@@ -188,7 +192,7 @@ class LLMAgentProxy:
 			void_lm_inputs = self._extract_void_inputs(lm_inputs, void_indices)
 			
 			# Regenerate responses for void samples
-			lm_outputs_new = self.generate_sequences(void_lm_inputs)
+			lm_outputs_new = self.generate_sequences(void_lm_inputs, async_rollout_mode=async_rollout_mode)
 			
 			# Update current outputs with new responses
 			current_outputs = self._update_outputs_with_regenerated(current_outputs, lm_outputs_new, void_indices)
@@ -265,7 +269,7 @@ class LLMAgentProxy:
 		
 		return updated_outputs
 
-	def rollout(self, dataproto: DataProto, val=False):
+	def rollout(self, dataproto: DataProto, val=False, async_rollout_mode=False, async_rollout_manager=None):
 		es_manager = self.val_es_manager if val else self.train_es_manager
 		ctx_manager = self.val_ctx_manager if val else self.train_ctx_manager
 		env_outputs = es_manager.reset()
@@ -275,11 +279,11 @@ class LLMAgentProxy:
 			lm_inputs.meta_info = dataproto.meta_info # TODO: setup vllm early stop when max length is reached. make sure this can be done
 
 			#* vanilla rollout of LLM
-			lm_outputs: DataProto = self.generate_sequences(lm_inputs)
+			lm_outputs: DataProto = self.generate_sequences(lm_inputs, async_rollout_mode=async_rollout_mode)
 			
 			#* Check for void actions and regenerate if necessary
 			if val==False:
-				lm_outputs = self._handle_void_actions(lm_inputs, lm_outputs)
+				lm_outputs = self._handle_void_actions(lm_inputs, lm_outputs, async_rollout_mode=async_rollout_mode, async_rollout_manager=async_rollout_manager)
 
 			#* env_inputs: manage context in a list ['env_id', 'llm_raw_response', 'llm_response', 'actions'], len is mini_bs
 			#* 'actions':  Only the first MAX_ACTIONS actions are kept in the rollout
