@@ -245,8 +245,8 @@ def compute_gae_advantage_return(
             lastgaelam_ = delta + gamma * lam * lastgaelam
 
             # skip values and TD-error on observation tokens
-            nextvalues = values[:, t] * response_mask[:, t] + (1 - response_mask[:, t]) * nextvalues
-            lastgaelam = lastgaelam_ * response_mask[:, t] + (1 - response_mask[:, t]) * lastgaelam
+            nextvalues = values[:, t] * response_mask[:, t] + (~response_mask[:, t]) * nextvalues
+            lastgaelam = lastgaelam_ * response_mask[:, t] + (~response_mask[:, t]) * lastgaelam
 
             advantages_reversed.append(lastgaelam)
         advantages = torch.stack(advantages_reversed[::-1], dim=1)

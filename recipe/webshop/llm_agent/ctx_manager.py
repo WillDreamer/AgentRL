@@ -389,20 +389,15 @@ class ContextManager:
             
         env_ids = lm_outputs.non_tensor_batch['env_ids']
         env_inputs = []
-        log_probs = lm_outputs.batch['rollout_log_probs']
 
-        for env_id, response, log_prob in zip(env_ids, responses, log_probs):
+        for env_id, response in zip(env_ids, responses):
             llm_response, actions = self._parse_response(response)
-
-            log_prob = log_prob[log_prob!=-1]
               
             env_inputs.append({
                 "env_id": env_id,
                 "llm_raw_response": response,
                 "llm_response": llm_response,
                 "actions": actions,
-                "log_prob": log_prob,
-                "rollout_len":log_prob.shape[0]
             })
         
         return env_inputs

@@ -283,7 +283,7 @@ class LLMAgentProxy:
 			
 			#* Check for void actions and regenerate if necessary
 			if val==False:
-				lm_outputs = self._handle_void_actions(lm_inputs, lm_outputs, async_rollout_mode=async_rollout_mode, async_rollout_manager=async_rollout_manager)
+				lm_outputs = self._handle_void_actions(lm_inputs, lm_outputs, async_rollout_mode=async_rollout_mode)
 
 			#* env_inputs: manage context in a list ['env_id', 'llm_raw_response', 'llm_response', 'actions'], len is mini_bs
 			#* 'actions':  Only the first MAX_ACTIONS actions are kept in the rollout

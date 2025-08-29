@@ -428,6 +428,7 @@ class AgentLoopWorker:
             )
             output: AgentLoopOutput = await agent_loop.run(sampling_params, **kwargs)
 
+
             # Some AgentLoop may have already computed the reward score, e.g SWE-agent.
             if output.reward_score is None and not self.config.reward_model.enable:
                 result = await self.reward_manager_worker.compute_score.remote(output, kwargs)
@@ -724,7 +725,6 @@ class AgentLoopManager:
         """
         if self.config.actor_rollout_ref.rollout.free_cache_engine:
             self.wake_up()
-        breakpoint()
         chunkes = prompts.chunk(len(self.agent_loop_workers))
         outputs = ray.get(
             [

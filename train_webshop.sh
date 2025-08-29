@@ -6,7 +6,7 @@ FILTER_RATIO=0.5
 MODEL=Qwen/Qwen3-0.6B
 MODEL_SHORT="${MODEL##*/}"
 
-ROLLOUT_MODE="async"
+ROLLOUT_MODE="sync"
 if [ "$ROLLOUT_MODE" = "async" ]; then
     export VLLM_USE_V1=1
 fi
