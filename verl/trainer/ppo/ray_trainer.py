@@ -434,13 +434,21 @@ class RayPPOTrainer:
         filename = os.path.join(dump_path, f"{self.global_steps}.jsonl")
 
         n = len(inputs)
-        base_data = {
-            "input": inputs,
-            "output": outputs,
-            "gts": gts,
-            "score": scores,
-            "step": [self.global_steps] * n,
-        }
+        if gts is not None:
+            base_data = {
+                "input": inputs,
+                "output": outputs,
+                "gts": gts,
+                "score": scores,
+                "step": [self.global_steps] * n,
+            }
+        else:
+            base_data = {
+                "input": inputs,
+                "output": outputs,
+                "score": scores,
+                "step": [self.global_steps] * n,
+            }
 
         for k, v in reward_extra_infos_dict.items():
             if len(v) == n:
