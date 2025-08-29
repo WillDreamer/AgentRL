@@ -671,6 +671,7 @@ class RayAgentTrainer(VerlRayPPOTrainer):
                             inputs=inputs,
                             outputs=outputs,
                             scores=scores,
+                            gts=None,
                             reward_extra_infos_dict=reward_extra_infos_dict,
                             dump_path=rollout_data_dir,
                         )
