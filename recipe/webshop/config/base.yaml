@@ -20,7 +20,7 @@ actor_rollout_ref:
     lora_alpha: 16
     target_modules: all-linear
   actor:
-    ppo_mini_batch_size: 32  
+    ppo_mini_batch_size: 64 
     micro_batch_size_per_gpu: 1
     ppo_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.micro_batch_size_per_gpu} 
     use_kl_loss: False
@@ -52,8 +52,8 @@ actor_rollout_ref:
     tp_size_check: True
 
 critic:
-  ppo_mini_batch_size: ${actor_rollout_ref.actor.ppo_mini_batch_size} # by default, ppo_mini_batch_size = train_batch_size / 4
-  ppo_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.micro_batch_size_per_gpu} # following micro_batch_size_per_gpu
+  ppo_mini_batch_size: 64
+  ppo_micro_batch_size_per_gpu: 1
   model:
     path: ${model_path}
     lora_rank: 0
