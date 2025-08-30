@@ -33,6 +33,7 @@ python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     agent_proxy.max_turn=9 \
     custom_envs.WebShop.max_actions_per_traj=9 \
     actor_rollout_ref.actor.ppo_mini_batch_size=64 \
+    critic.ppo_mini_batch_size=64 \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.mode=$ROLLOUT_MODE \
     actor_rollout_ref.rollout.response_length=500 \
