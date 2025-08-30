@@ -1,327 +1,485 @@
-from .ctx_manager import ContextManager
-from .es_manager import EnvStateManager
-from vllm import LLM, SamplingParams
-from verl.single_controller.ray.base import RayWorkerGroup
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from verl import DataProto
-import hydra
-import os
-from typing import List, Dict
-from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
-from .base_llm import ConcurrentLLM
+"""
+This is the updated context manager for the LLM agent.
+author: Haixin
+date: 2025-08-24
+"""
+from itertools import zip_longest
+
 import torch
-# import time
+import numpy as np
+from typing import List, Dict, Any, Optional, Union
+from dataclasses import dataclass
+import re
+from verl import DataProto
+from verl.utils.dataset.rl_dataset import collate_fn
+from transformers import AutoTokenizer
+import hydra
+from recipe.webshop.utils import register_resolvers
+from recipe.webshop.env import REGISTERED_ENV_CONFIGS
+from tensordict import TensorDict
 
+from dataclasses import asdict
+register_resolvers()
 
-class VllmWrapperWg: # Thi is a developing class for eval and test
-	def __init__(self, config, tokenizer):
-		self.config = config
-		self.tokenizer = tokenizer
-		model_name = config.actor_rollout_ref.model.path
-		ro_config = config.actor_rollout_ref.rollout
-		self.llm = LLM(
-			model_name,
-            enable_sleep_mode=True,
-            tensor_parallel_size=ro_config.tensor_model_parallel_size,
-            dtype=ro_config.dtype,
-            enforce_eager=ro_config.enforce_eager,
-            gpu_memory_utilization=ro_config.gpu_memory_utilization,
-            disable_custom_all_reduce=True,
-            # disable_mm_preprocessor_cache=True,
-            skip_tokenizer_init=False,
-            max_model_len=ro_config.max_model_len,
-            disable_log_stats=ro_config.disable_log_stats,
-            max_num_batched_tokens=ro_config.max_num_batched_tokens,
-            enable_chunked_prefill=ro_config.enable_chunked_prefill,
-            enable_prefix_caching=True,
-			trust_remote_code=True,
-		)
-		print("LLM initialized")
-		self.sampling_params = SamplingParams(
-			max_tokens=ro_config.response_length,
-			temperature=ro_config.val_kwargs.temperature,
-			top_p=ro_config.val_kwargs.top_p,
-			top_k=ro_config.val_kwargs.top_k,
-			# min_p=0.1,
-		)
+def get_special_tokens(tokenizer: AutoTokenizer):
+    if "qwen" in tokenizer.name_or_path.lower():
+        special_token = tokenizer.encode("<|im_start|>")[0]
+        reward_token = tokenizer.encode("<|im_end|>")[0]
+    elif "llama-3" in tokenizer.name_or_path.lower():
+        special_token = 128006
+        reward_token = 128009
+    else:
+        raise ValueError(f"Unsupported model: {tokenizer.name_or_path}")
+    return special_token, reward_token
 
-	def generate_sequences(self, lm_inputs: DataProto):
-		"""
-		Convert the input ids to text, and then generate the sequences. Finally create a dataproto. 
-		This aligns with the verl Worker Group interface.
-		"""
-		# NOTE: free_cache_engine is not used in the vllm wrapper. Only used in the verl vllm.
-		# cache_action = lm_inputs.meta_info.get('cache_action', None)
-
-		input_ids = lm_inputs.batch['input_ids']
-		input_texts = self.tokenizer.batch_decode(input_ids, skip_special_tokens=False)
-		input_texts = [i.replace("<|endoftext|>", "") for i in input_texts]
-
-		outputs = self.llm.generate(input_texts, sampling_params=self.sampling_params)
-		texts = [output.outputs[0].text for output in outputs] 
-		lm_outputs = DataProto()
-		lm_outputs.non_tensor_batch = {
-			'response_texts': texts,
-			'env_ids': lm_inputs.non_tensor_batch['env_ids'],
-			'group_ids': lm_inputs.non_tensor_batch['group_ids']
-		} # this is a bit hard-coded to bypass the __init__ check in DataProto
-		lm_outputs.meta_info = lm_inputs.meta_info
-
-		return lm_outputs
-	
-class ApiCallingWrapperWg:
-    """Wrapper class for API-based LLM calls that fits into the VERL framework"""
+def get_masks_and_scores(input_ids: torch.Tensor, tokenizer: AutoTokenizer, all_scores: List[List[float]] = None, use_turn_scores: bool = False, enable_response_mask: bool = False):
+    """
+    input_ids: shape (bsz, seq_len)
+    Get loss mask that only learns between <|im_start|>assistant and <|im_end|>. Currently only supports qwen.
+    NOTE: important! This assumes that the input_ids starts with system and then user & assistant in alternative ways
+    """
+    special_token, reward_token = get_special_tokens(tokenizer)
     
-    def __init__(self, config, tokenizer):
+    turn_starts = torch.where(input_ids == special_token, 1, 0)
+    turn_indicators = torch.cumsum(turn_starts, dim=-1)
+    if enable_response_mask:
+        loss_mask = (turn_indicators % 2 == 1) & (turn_indicators > 1) # only learns all assistant turns
+    else:
+        loss_mask = (turn_indicators > 1) # learns everything after system prompt
+    response_mask = (turn_indicators % 2 == 1) & (turn_indicators > 1)
+
+    #* Loss mask for void actions
+    B, T = input_ids.shape
+    row_max = turn_indicators.amax(dim=1)               # [B]
+    num_turns = torch.clamp(((row_max - 1) // 2), min=0)  # [B]
+    #* Check if the responses in the turn contain </think>
+    valid = (turn_indicators > 0) & response_mask
+    group_id = torch.where(
+        valid,
+        (turn_indicators - 1).div(2, rounding_mode='floor'),
+        torch.full_like(turn_indicators, -1),
+    )
+    for i in range(B):
+        nt = int(num_turns[i].item())
+        if nt <= 0:
+            continue
+
+        gi = group_id[i]       # [T]
+        row_input = input_ids[i]
+
+        for r in range(nt):
+            idxs_r = gi.eq(r)
+            if not idxs_r.any():
+                continue
+
+            #* check if contains target_id
+            if not (row_input[idxs_r] == int(151668)).any():
+                # loss_mask[i][idxs_r] = False  
+                loss_mask[i] = False
+                break 
+            else:
+                #* mask tokens before target_id (151668)
+                target_positions = (row_input[idxs_r] == int(151668)).nonzero(as_tuple=True)[0]
+                if len(target_positions) > 0:
+                    # Get the position of the first occurrence of target_id within this turn
+                    first_target_pos = target_positions[0]
+                    # Get the absolute positions for this turn
+                    turn_positions = idxs_r.nonzero(as_tuple=True)[0]
+                    # Mask all positions before the first target_id in this turn
+                    mask_positions = turn_positions[:first_target_pos]
+                    loss_mask[i][mask_positions] = False
+                
+    
+    score_tensor = torch.zeros_like(input_ids, dtype=torch.float32)
+    if use_turn_scores:
+        for idx, scores in enumerate(zip_longest(*all_scores, fillvalue=0)):
+            scores = torch.tensor(scores, dtype=torch.float32)
+            turn_indicator = idx * 2 + 3 # 0: pad. 1: system. 2+2n: user. 3+2n: assistant
+            reward_position = (input_ids == reward_token) & (turn_indicators == turn_indicator)
+            # Set the last token of the rows where all positions are False to True
+            reward_position[~reward_position.any(dim=-1), -1] = True
+            score_tensor[reward_position] = scores
+        if "qwen" in tokenizer.name_or_path.lower():
+            # for Qwen, there is a "\n" between special token and reward token, so we shift this to make sure reward is assigned to the last token of a turn
+            score_tensor = score_tensor.roll(shifts=1, dims=-1)
+    else:
+        scores = [sum(i) for i in all_scores]
+        score_tensor[:, -1] = torch.tensor(scores, dtype=torch.float32)
+    score_tensor = score_tensor[:, 1:] # remove the first token
+    loss_mask = loss_mask[:, :-1] # remove the last token
+    response_mask = response_mask[:, :-1] # remove the last token
+
+    return score_tensor, loss_mask, response_mask
+
+
+
+class ContextManager:
+    """
+    Manages the context for LLM interactions with environments.
+    Translates between environment outputs and LLM inputs, and vice versa.
+    """
+
+    def __init__(self, 
+                 config,
+                 tokenizer,
+                 processor = None,
+                 mode: str = "train",
+                 ):
+        """
+        Initialize the ContextManager.
+        Processor is used to process the image data.
+        """
         self.config = config
         self.tokenizer = tokenizer
-        model_info = config.model_info[config.model_config.model_name]
-        self.llm_kwargs = model_info.generation_kwargs
-        
-        
-        self.llm = ConcurrentLLM(
-			provider=model_info.provider_name,
-            model_name=model_info.model_name,
-            max_concurrency=config.model_config.max_concurrency,
-			api_key=config.model_config.api_key
-        )
-        
-        print(f'API-based LLM ({model_info.provider_name} - {model_info.model_name}) initialized')
+        self.processor = processor
+        self.action_sep = self.config.agent_proxy.action_sep
+        self.special_token_list = ["<think>", "</think>", "<answer>", "</answer>", "<|im_start|>", "<|im_end|>"]
 
+        self.es_cfg = self.config.es_manager[mode]
+        self.env_nums = {
+                env_tag: n_group * self.es_cfg.group_size
+                for n_group, env_tag in zip(self.es_cfg.env_configs.n_groups, self.es_cfg.env_configs.tags)
+        }
+        self._init_prefix_lookup()
+    
+    def _check_env_installed(self, env_type: str):
+        if env_type not in REGISTERED_ENV_CONFIGS:
+            raise ValueError(f"Environment {env_type} is not installed. Please install it using the scripts/setup_{env_type}.sh script.")
 
-    def generate_sequences(self, lm_inputs: DataProto) -> DataProto:
+    def _init_prefix_lookup(self):
+        prefix_lookup = {}
+        prefixes = {}
+        env_config_lookup = {}
+        env_config = {}
+        for env_tag, env_config in self.config.custom_envs.items():
+            if env_tag not in self.es_cfg.env_configs.tags:
+                continue
+
+            self._check_env_installed(env_config.env_type)
+            env_config_new = asdict(REGISTERED_ENV_CONFIGS[env_config.env_type]())
+            for k,v in env_config.items():
+                env_config_new[k] = v
+            env_instruction = env_config_new.get("env_instruction", "")
+            if env_config_new.get("grid_vocab", False):
+                grid_vocab_str = "\nThe meaning of each symbol in the state is:\n" + ", ".join([f"{k}: {v}" for k, v in env_config_new["grid_vocab"].items()])
+                env_instruction += grid_vocab_str
+            if env_config_new.get("action_lookup", False):
+                action_lookup_str = "\nYour available actions are:\n" + ", ".join([f"{v}" for k, v in env_config_new["action_lookup"].items()])
+                action_lookup_str += f"\nYou can make up to {env_config_new['max_actions_per_traj']} actions, separated by the action separator \" " + self.action_sep + " \"\n"
+                env_instruction += action_lookup_str
+            prefixes[env_tag] = env_instruction
+            env_config_lookup[env_tag] = {'max_tokens': env_config.get("max_tokens", self.config.actor_rollout_ref.rollout.response_length)}
+
+        tags = self.es_cfg.env_configs.tags
+        n_groups = self.es_cfg.env_configs.n_groups
+        group_size = self.es_cfg.group_size
+
+        cur_group = 0
+        for env_tag, n_group in zip(tags, n_groups):
+            env_instruction = prefixes[env_tag]
+            start_idx = cur_group * group_size
+            end_idx = (cur_group + n_group) * group_size
+            for i in range(start_idx, end_idx):
+                prefix_lookup[i] = env_instruction
+                env_config_lookup[i] = env_config_lookup[env_tag]
+            cur_group += n_group
+            
+        self.prefix_lookup = prefix_lookup
+        self.env_config_lookup = env_config_lookup
+
+    def _parse_response(self, response: str) -> List:
+        pattern = r'<think>(.*?)</think>\s*<answer>(.*?)</answer>' if self.config.agent_proxy.enable_think else r'<answer>(.*?)</answer>'
+        match = re.search(pattern, response, re.DOTALL)
+        if not match:
+            # think_content, action_content, actions = "", "", [] # do not remove this kind of invalid string
+            llm_response, actions = response, []
+        else:
+            if self.config.agent_proxy.enable_think:
+                think_content, action_content = match.group(1), match.group(2)
+            else:
+                think_content, action_content = "", match.group(1)
+
+                
+            for special_token in self.special_token_list:
+                action_content = action_content.replace(special_token, "").strip()
+                think_content = think_content.replace(special_token, "").strip()
+            
+            actions = [action.strip() for action in action_content.split(self.action_sep) if action.strip()]
+            max_actions = self.config.agent_proxy.max_actions_per_turn
+
+            if len(actions) > max_actions:
+                actions = actions[:max_actions] #Only the first MAX_ACTIONS actions are kept in the rollout.
+                action_content = (" " + self.action_sep + " ").join(actions)
+
+            llm_response = f"<think>{think_content}</think><answer>{action_content}</answer>" if self.config.agent_proxy.enable_think else f"<answer>{action_content}</answer>"
+        return llm_response, actions
+        
+    def _normalize_score_tensor(self, score_tensor: torch.Tensor, env_outputs: List[Dict]) -> torch.Tensor:
         """
-        Convert the input ids to text, make API calls to generate responses, 
-        and create a DataProto with the results.
+        Normalize the score tensor to be between 0 and 1.
+        NOTE: only support score at the last token for now
         """
-
-        messages_list = lm_inputs.non_tensor_batch['messages_list'].tolist()
-        results, failed_messages = self.llm.run_batch(
-            messages_list=messages_list,
-            **self.llm_kwargs
-        )
-        assert not failed_messages, f"Failed to generate responses for the following messages: {failed_messages}"
-
-        texts = [result["response"] for result in results]
-        print(f'[DEBUG] texts: {texts}')
-        lm_outputs = DataProto()
-        lm_outputs.non_tensor_batch = {
-			'response_texts': texts,
-			'env_ids': lm_inputs.non_tensor_batch['env_ids'],
-			'group_ids': lm_inputs.non_tensor_batch['group_ids']
-		} # this is a bit hard-coded to bypass the __init__ check in DataProto
-        lm_outputs.meta_info = lm_inputs.meta_info
+        assert self.config.agent_proxy.use_turn_scores == False, "Reward normalization is not supported for use_turn_scores == True"
         
-        return lm_outputs
+        rn_cfg = self.config.agent_proxy.reward_normalization
+        grouping, method = rn_cfg.grouping, rn_cfg.method
+        if grouping == "state":
+            group_tags = [env_output["group_id"] for env_output in env_outputs]
+        elif grouping == "inductive":
+            group_tags = [env_output["tag"] for env_output in env_outputs]
+        elif grouping == "batch":
+            group_tags = [1] * len(env_outputs)
+        else:
+            raise ValueError(f"Invalid grouping: {grouping}")
 
-class LLMAgentProxy:
-	"""
-	The proxy means the llm agent is trying to generate some rollout **at this time**, **at this model state**, **at this env state from the env config**
-	"""
-	def __init__(self, config, actor_rollout_wg, tokenizer, async_rollout_manager=None):
-		self.config = config
-		self.train_ctx_manager = ContextManager(config, tokenizer, mode="train")
-		self.train_es_manager = EnvStateManager(config, mode="train")
-		self.val_ctx_manager = ContextManager(config, tokenizer, mode="val")
-		self.val_es_manager = EnvStateManager(config, mode="val")
-		self.actor_wg = actor_rollout_wg
-		self.async_rollout_manager = async_rollout_manager
-		self.tokenizer = tokenizer
 
-	def generate_sequences(self, lm_inputs: DataProto, async_rollout_mode=False):
-		# TODO: add kv cache both for the vllm wrapper here and for verl vllm.
-		if isinstance(self.actor_wg, RayWorkerGroup):
-			padded_lm_inputs, pad_size = pad_dataproto_to_divisor(lm_inputs, self.actor_wg.world_size)
-			if async_rollout_mode:
-				padded_lm_outputs = self.async_rollout_manager.generate_sequences(padded_lm_inputs)
-			else:
-				padded_lm_outputs = self.actor_wg.generate_sequences(padded_lm_inputs)
-			# idx_ = 2
-			# tokens = padded_lm_outputs.batch['responses'][idx_][padded_lm_outputs.batch['responses'][idx_] != 151643]
-			# decoded_tokens = [self.tokenizer.decode([tid], skip_special_tokens=True) for tid in tokens]
-			# prob = padded_lm_outputs.batch['rollout_log_probs'][idx_][padded_lm_outputs.batch['rollout_log_probs'][idx_] != -1]
-			lm_outputs = unpad_dataproto(padded_lm_outputs, pad_size=pad_size)
-			lm_outputs.meta_info = lm_inputs.meta_info
-			lm_outputs.non_tensor_batch = lm_inputs.non_tensor_batch
-		elif isinstance(self.actor_wg, VllmWrapperWg) or isinstance(self.actor_wg, ApiCallingWrapperWg):
-			lm_outputs = self.actor_wg.generate_sequences(lm_inputs)
-		else:
-			raise ValueError(f"Unsupported actor worker type: {type(self.actor_wg)}")
+        if method == "mean_std":
+            norm_func = lambda x: (x - x.mean(dim=-1, keepdim=True)) / (x.std(dim=-1, keepdim=True) + 1e-6) if x.std(dim=-1, keepdim=True).abs().max() > 1e-6 else torch.zeros_like(x) # stable to bf16 than x.std()
+        elif method == "mean":
+            norm_func = lambda x: (x - x.mean(dim=-1, keepdim=True))
+        elif method == "asym_clip":
+            norm_func = lambda x: ((x - x.mean(dim=-1, keepdim=True)) / (x.std(dim=-1, keepdim=True) + 1e-6) if x.std(dim=-1, keepdim=True).abs().max() > 1e-6 else torch.zeros_like(x)).clamp(min=-1, max=3)
+        elif method == "identity":
+            norm_func = lambda x: x
+        else:
+            raise ValueError(f"Invalid normalization method: {method}")
 
-		return lm_outputs
+        # apply groupwise normalization
+        group2index = {}
+        for i, env_tag in enumerate(group_tags):
+            if env_tag not in group2index:
+                group2index[env_tag] = []
+            group2index[env_tag].append(i)
+        group2index = {k: torch.tensor(v) for k, v in group2index.items()}
 
-	def _handle_void_actions(self, lm_inputs: DataProto, lm_outputs: DataProto, max_retries: int = 1, async_rollout_mode=False) -> DataProto:
-		"""
-		Check for void actions (responses without <answer> tags) and regenerate them.
-		
-		Args:
-			lm_inputs: Original inputs to the LLM
-			lm_outputs: Outputs from the LLM
-			max_retries: Maximum number of regeneration attempts
-			
-		Returns:
-			Updated lm_outputs with regenerated responses for void actions
-		"""
-		current_outputs = lm_outputs
-		
-		for retry in range(max_retries):
-			# Decode responses to check for <answer> tags
-			if current_outputs.batch is not None and 'responses' in current_outputs.batch:
-				# For tensor-based responses (RayWorkerGroup)
-				decoded_responses = self.tokenizer.batch_decode(current_outputs.batch['responses'], skip_special_tokens=True)
-			elif current_outputs.non_tensor_batch is not None and 'response_texts' in current_outputs.non_tensor_batch:
-				# For text-based responses (VllmWrapperWg, ApiCallingWrapperWg)
-				decoded_responses = current_outputs.non_tensor_batch['response_texts']
-			else:
-				# No responses to check
-				return current_outputs
-			
-			# Create void mask: True for samples that need regeneration
-			void_mask = [not ('<answer>' in r and '</answer>' in r) for r in decoded_responses]
-			
-			# If no void actions, return current outputs
-			if not any(void_mask):
-				return current_outputs
-			
-			print(f"Retry {retry + 1}: Found {sum(void_mask)} void actions out of {len(void_mask)} samples. Regenerating...")
-			
-			# Extract inputs for void samples
-			void_indices = [i for i, is_void in enumerate(void_mask) if is_void]
-			
-			# Create new inputs for void samples only
-			void_lm_inputs = self._extract_void_inputs(lm_inputs, void_indices)
-			
-			# Regenerate responses for void samples
-			lm_outputs_new = self.generate_sequences(void_lm_inputs, async_rollout_mode=async_rollout_mode)
-			
-			# Update current outputs with new responses
-			current_outputs = self._update_outputs_with_regenerated(current_outputs, lm_outputs_new, void_indices)
-		
-		# If we still have void actions after max retries, log a warning but continue
-		final_decoded_responses = self.tokenizer.batch_decode(current_outputs.batch['responses'], skip_special_tokens=True) \
-			if current_outputs.batch is not None and 'responses' in current_outputs.batch \
-			else current_outputs.non_tensor_batch.get('response_texts', [])
-		
-		final_void_count = sum(1 for r in final_decoded_responses if not ('<answer>' in r and '</answer>' in r))
-		if final_void_count > 0:
-			print(f"Warning: After {max_retries} retries, still have {final_void_count} void actions. Proceeding anyway.")
-		
-		return current_outputs
-	
-	def _extract_void_inputs(self, lm_inputs: DataProto, void_indices: List[int]) -> DataProto:
-		"""Extract inputs for void samples to regenerate them."""
-		# Use DataProto's built-in indexing which properly handles TensorDict
-		void_indices_tensor = torch.tensor(void_indices)
-		void_lm_inputs = lm_inputs[void_indices_tensor]
-		return void_lm_inputs
-	
-	def _update_outputs_with_regenerated(self, original_outputs: DataProto, new_outputs: DataProto, void_indices: List[int]) -> DataProto:
-		"""Update original outputs with regenerated responses for void samples."""
-		# Create a copy of the original outputs
-		updated_outputs = DataProto()
-		updated_outputs.meta_info = original_outputs.meta_info.copy()
-		
-		# Handle tensor batch data
-		if original_outputs.batch is not None:
-			# Clone the original batch data structure
-			if hasattr(original_outputs.batch, 'clone'):
-				updated_outputs.batch = original_outputs.batch.clone()
-			else:
-				# Fallback for dictionary-like batch data
-				updated_outputs.batch = {}
-				for key, tensor in original_outputs.batch.items():
-					if isinstance(tensor, torch.Tensor):
-						updated_outputs.batch[key] = tensor.clone()
-					else:
-						updated_outputs.batch[key] = tensor.copy() if hasattr(tensor, 'copy') else list(tensor)
-			
-			# Update void indices with new data
-			if new_outputs.batch is not None:
-				for key in updated_outputs.batch.keys():
-					if key in new_outputs.batch:
-						if isinstance(updated_outputs.batch[key], torch.Tensor):
-							updated_outputs.batch[key][void_indices] = new_outputs.batch[key]
-						else:
-							# Handle list-like data
-							for i, void_idx in enumerate(void_indices):
-								updated_outputs.batch[key][void_idx] = new_outputs.batch[key][i]
-		
-		# Handle non-tensor batch data
-		if original_outputs.non_tensor_batch is not None:
-			updated_outputs.non_tensor_batch = {}
-			for key, data in original_outputs.non_tensor_batch.items():
-				if isinstance(data, list):
-					updated_outputs.non_tensor_batch[key] = data.copy()
-				elif hasattr(data, 'clone'):
-					updated_outputs.non_tensor_batch[key] = data.clone()
-				else:
-					updated_outputs.non_tensor_batch[key] = data
-			
-			# Update void indices with new data
-			if new_outputs.non_tensor_batch is not None:
-				for key in updated_outputs.non_tensor_batch.keys():
-					if key in new_outputs.non_tensor_batch:
-						if isinstance(updated_outputs.non_tensor_batch[key], list):
-							for i, void_idx in enumerate(void_indices):
-								updated_outputs.non_tensor_batch[key][void_idx] = new_outputs.non_tensor_batch[key][i]
-						elif hasattr(updated_outputs.non_tensor_batch[key], '__setitem__'):
-							updated_outputs.non_tensor_batch[key][void_indices] = new_outputs.non_tensor_batch[key]
-		
-		return updated_outputs
+        
+        # apply penalty pre-normalization
+        acc_scores = score_tensor[:, -1]
+        normalized_acc_scores = acc_scores.clone()
+        penalty = torch.tensor([env_output.get("penalty", 0) for env_output in env_outputs], dtype=torch.float32)
+        normalized_acc_scores = normalized_acc_scores + penalty
 
-	def rollout(self, dataproto: DataProto, val=False, async_rollout_mode=False, async_rollout_manager=None):
-		es_manager = self.val_es_manager if val else self.train_es_manager
-		ctx_manager = self.val_ctx_manager if val else self.train_ctx_manager
-		env_outputs = es_manager.reset()
+        if len(group2index) < acc_scores.shape[0]: # the group size > 1
+            for group, index in group2index.items():
+                normalized_acc_scores[index] = norm_func(normalized_acc_scores[index])
 
-		for i in range(self.config.agent_proxy.max_turn):
-			lm_inputs: DataProto = ctx_manager.get_lm_inputs(env_outputs, prepare_for_update=False)
-			lm_inputs.meta_info = dataproto.meta_info # TODO: setup vllm early stop when max length is reached. make sure this can be done
+        score_tensor[:, -1] = normalized_acc_scores
 
-			#* vanilla rollout of LLM
-			lm_outputs: DataProto = self.generate_sequences(lm_inputs, async_rollout_mode=async_rollout_mode)
-			
-			#* Check for void actions and regenerate if necessary
-			if val==False:
-				lm_outputs = self._handle_void_actions(lm_inputs, lm_outputs, async_rollout_mode=async_rollout_mode)
+        return score_tensor
+    
+    def get_lm_inputs(self, env_outputs: List[Dict], prepare_for_update: bool) -> DataProto:
+        """
+        env_outputs - please see below example
+        [
+            {"env_id": 1, "history": [{"state": "###\n#x_#", "llm_response": "Response 1", "reward": 0.5}, {"state": "###\n#x_#"}]},
+            {"env_id": 2, "history": [{"state": "###\n#x_#"}]},
+            ...
+        ]
+        prefix_lookup - from env_id to initial prompt
+        """
+        llm_input_texts = []
+        messages_list = [] # for api calling
+        
+        for env_output in env_outputs:
+            if 'state' in env_output['history'][-1] and prepare_for_update:
+                env_output['history'] = env_output['history'][:-1] # when prepare for update, we do not add the state from the n+1 turn to the trajectory
+            
+            max_k = getattr(self.config.agent_proxy, "max_context_window", None)
+            if max_k is not None and isinstance(max_k, int) and max_k > 0:
+                env_output['history'] = env_output['history'][-max_k:]
+            
+            messages = [
+                {"role": "system", "content": f"You're a helpful assistant. "}
+            ]
+            text = self.tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
+            
+            messages.append({"role": "user", "content": self.prefix_lookup[env_output["env_id"]]})
 
-			#* env_inputs: manage context in a list ['env_id', 'llm_raw_response', 'llm_response', 'actions'], len is mini_bs
-			#* 'actions':  Only the first MAX_ACTIONS actions are kept in the rollout
-			#* "llm_response" transforms "llm_raw_response" into <think>xx</think><answer>xx</answer>
-			env_inputs: List[Dict] = ctx_manager.get_env_inputs(lm_outputs)
-			env_outputs: List[Dict] = es_manager.step(env_inputs)
-			if len(env_outputs) == 0: # all finished
-				break
-		rollout_states = es_manager.get_rollout_states() 
-		rollouts = ctx_manager.formulate_rollouts(rollout_states)
-		# self.tokenizer.batch_decode(rollouts.batch['input_ids'], skip_special_tokens=False) # see all the trajectories
-		return rollouts
+            for idx, content in enumerate(env_output["history"]):
+                
+                messages[-1]["content"] += f"\nTurn {idx + 1}:\n"
+                    
+                if "state" in content:
+                    FORMAT_PROMPT = "<think> [Your thoughts] </think> <answer> [your answer] </answer>" if self.config.agent_proxy.enable_think else "<answer> [your answer] </answer>"
+                    LENGTH_PROMPT = f"Max response length: {self.env_config_lookup[env_output['env_id']]['max_tokens']} words (tokens)."
+                    messages[-1]["content"] += f"State:\n{content['state']}\nYou have {content['actions_left']} actions left. Always output: {FORMAT_PROMPT} with no extra text. Strictly follow this format. {LENGTH_PROMPT}\n"
+                
+                text += self.tokenizer.apply_chat_template([messages[-1]], add_generation_prompt=False, tokenize=False)
 
-@hydra.main(version_base=None, config_path="../../config", config_name="base")
+                if "llm_response" in content:
+                    llm_response = {"role": "assistant", "content": content["llm_response"]}
+                    messages.append(llm_response)
+
+                    lm_res_template = "<|im_start|>assistant\n" + content["llm_response"] + "<|im_end|>\n"
+                    
+                    text += lm_res_template
+                if "reward" in content and not (prepare_for_update and idx == len(env_output["history"]) - 1):
+                    # when prepare for update, we do not add the reward from the n+1 turn to the trajectory
+                    reward_info = {"role": "user", "content": f"Reward:\n{content['reward']}\n"}
+                    messages.append(reward_info)
+            
+            if not prepare_for_update:
+                text += f"<|im_start|>assistant\n"     
+            # NOTE: this assertion is important for loss mask computation        
+            assert all(msg["role"] == "assistant" for msg in messages[2::2])
+
+            # text = self.tokenizer.apply_chat_template(messages, add_generation_prompt=(not prepare_for_update), tokenize=False)
+            # if not prepare_for_update:
+            #     if self.config.agent_proxy.enable_think:
+            #         text += "<think>" # force the LLM to think before answering
+            #     else:
+            #         text += "<answer>" # force the LLM to answer
+            llm_input_texts.append(text)
+            messages_list.append(messages)
+        
+
+        inputs = self.tokenizer(llm_input_texts, return_tensors="pt", padding=True, padding_side="left", truncation=False) # do not truncate here. Process later at TODO
+        input_ids, attention_mask = inputs.input_ids, inputs.attention_mask
+        position_ids = attention_mask.cumsum(dim=-1)
+        if prepare_for_update:
+            
+            scores = [[i.get('reward', 0.0) for i in env_output['history']] for env_output in env_outputs]
+            score_tensor, loss_mask, response_mask = get_masks_and_scores(input_ids, self.tokenizer, scores, use_turn_scores=self.config.agent_proxy.use_turn_scores, enable_response_mask=self.config.enable_response_mask)
+            
+            normalized_score_tensor = score_tensor
+            if not self.config.agent_proxy.use_turn_scores:
+                normalized_score_tensor = self._normalize_score_tensor(score_tensor, env_outputs)
+            response_length = response_mask.sum(dim=-1).float().mean().item()
+
+
+        llm_inputs = DataProto()
+        llm_inputs.batch = TensorDict({
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "position_ids": position_ids,
+            "responses": input_ids[:, 1:], # remove the first token
+        }, batch_size=input_ids.shape[0])
+
+        if prepare_for_update:
+            llm_inputs.batch["loss_mask"] = loss_mask # remove the first token
+            llm_inputs.batch["rm_scores"] = normalized_score_tensor # remove the first token
+            llm_inputs.batch["original_rm_scores"] = score_tensor # remove the first token
+        llm_inputs.non_tensor_batch = {
+            "env_ids": np.array([env_output["env_id"] for env_output in env_outputs], dtype=object),
+            "group_ids": np.array([env_output["group_id"] for env_output in env_outputs], dtype=object),
+            "messages_list": np.array(messages_list, dtype=object),
+            "raw_prompt":np.array(llm_input_texts, dtype=object)
+        }
+
+        if prepare_for_update:
+            metrics = {}
+            for env_output in env_outputs:
+                for key, value in env_output["metrics"].items():
+                    if key not in metrics:
+                        metrics[key] = []
+                    metrics[key].append(value)
+            mean_metrics = {
+                key: np.sum(value) / self.env_nums[key.split("/")[0]]
+                for key, value in metrics.items()
+            }
+            for key, values in metrics.items():
+                if not isinstance(values, list):
+                    continue
+                prefix, suffix = key.split("/", 1)
+                non_zero_values = [v for v in values if v != 0]
+                if non_zero_values:  # Avoid division by zero
+                    non_zero_key = f"{prefix}/non-zero/{suffix}"
+                    mean_metrics[non_zero_key] = np.mean(non_zero_values)
+            metrics = mean_metrics
+            metrics["response_length"] = response_length
+            llm_inputs.meta_info = {"metrics": metrics}
+        return llm_inputs
+
+    def get_env_inputs(self, lm_outputs: DataProto) -> List[Dict]:
+        if lm_outputs.batch is not None and 'responses' in lm_outputs.batch.keys():
+            responses = self.tokenizer.batch_decode(
+                lm_outputs.batch['responses'], 
+                skip_special_tokens=True
+            )
+        else: # dataproto has textual responses
+            responses = lm_outputs.non_tensor_batch['response_texts']
+            
+        env_ids = lm_outputs.non_tensor_batch['env_ids']
+        env_inputs = []
+
+        for env_id, response in zip(env_ids, responses):
+            llm_response, actions = self._parse_response(response)
+              
+            env_inputs.append({
+                "env_id": env_id,
+                "llm_raw_response": response,
+                "llm_response": llm_response,
+                "actions": actions,
+            })
+        
+        return env_inputs
+
+    def formulate_rollouts(self, env_outputs: List[Dict]) -> DataProto:
+        llm_inputs = self.get_lm_inputs(env_outputs, prepare_for_update=True)
+        return llm_inputs
+
+    
+
+
+
+@hydra.main(version_base = None, config_path = "../../config", config_name = "base")
 def main(config):
-	# detect config name from python -m ragen.llm_agent.agent_proxy --config_name frozen_lake
-	os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
-	os.environ["CUDA_VISIBLE_DEVICES"] = str(config.system.CUDA_VISIBLE_DEVICES)
-	tokenizer = AutoTokenizer.from_pretrained(config.actor_rollout_ref.model.path)
-	actor_wg = VllmWrapperWg(config, tokenizer)
-	proxy = LLMAgentProxy(config, actor_wg, tokenizer)
-	import time
-	for _ in range(3):
-		start_time = time.time()
-		rollouts = proxy.rollout(DataProto(batch=None, non_tensor_batch=None, meta_info={'eos_token_id': 151645, 'pad_token_id': 151643, 'recompute_log_prob': False, 'do_sample':config.actor_rollout_ref.rollout.do_sample, 'validate': True}), val=True)
-		end_time = time.time()
-		print(f'rollout time: {end_time - start_time} seconds')
-		# print rollout rewards from the rm_scores
-		rm_scores = rollouts.batch["rm_scores"]
-		metrics = rollouts.meta_info["metrics"]
-		avg_reward = rm_scores.sum(-1).mean().item()
-		print(f'rollout rewards: {avg_reward}')
-		print(f'metrics:')
-		for k, v in metrics.items():
-			print(f'{k}: {v}')
+    import json
+    tokenizer = AutoTokenizer.from_pretrained(config.actor_rollout_ref.model.path)
+    ctx_manager = ContextManager(config=config, tokenizer=tokenizer)
+    print("ctx_manager prefix", ctx_manager.prefix_lookup)
+    # batch_list = [
+    #     {
+    #         "env_ids": 0,
+    #         "chat_response": "<think><think></answer> 123. </think><answer> <answer> say | hi </answer></answer>",
+    #     },
+    #     {
+    #         "env_ids": 1,
+    #         "chat_response": "<think> 456. </think><answer> 789 </answer><think> 10123 </think><answer> 11111 </answer>",
+    #     }
+    # ]
+    # ctx_manager.action_sep_lookup = {
+    #     0: "|",
+    #     1: ";"
+    # }
+    # for item in batch_list:
+    #     item["responses"] = tokenizer.encode(item["chat_response"], return_tensors="pt",max_length=512, truncation=True,padding="max_length")[0]
+    # batch_dict = collate_fn(batch_list)
+    # batch = DataProto.from_single_dict(batch_dict)
+    # env_inputs = ctx_manager.get_env_inputs(batch)
+    # print(env_inputs)
+    
 
 
-
+    env_outputs = [
+        {
+            "env_id": 1,
+            "history": [
+                {"state": "###\n#x_#<image>", "llm_response": "Response 1", "reward": 0.5, "actions_left": 2},
+                {"state": "###\n#x_#<image>", "llm_response": "Response 2", "reward": 0.8, "actions_left": 1},
+                {"state": "###\n#x_#<image>", "actions_left": 0}
+            ],
+            "group_id": 0,
+            "metrics": {}
+        },
+        {
+            "env_id": 2,
+            "history": [
+                {"state": "###\n#x_#<image>", "llm_response": "Response 3", "reward": 0.3, "actions_left": 1},
+                {"state": "###\n#x_#<image>", "actions_left": 0}
+            ],
+            "group_id": 1,
+            "metrics": {}
+        }
+    ]
+    
+    prefix_lookup = {1: "Initial prompt", 2: "Initial prompt 2"}
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct")
+    env_prompt = ctx_manager.get_lm_inputs(env_outputs, prepare_for_update=False)
+    print(env_prompt)
+    formulate_rollouts_rst= ctx_manager.formulate_rollouts(env_outputs)
+    print(formulate_rollouts_rst)
 
 if __name__ == "__main__":
-	main()
+    main()
+    
