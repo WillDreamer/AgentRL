@@ -1,14 +1,17 @@
 set -e
 
 TASK_NAME=_webshop
-REMARK=prompt_v5_T_5_Len_500_VoidRe_1_ctx_notemplate_lr_5e-7_voidmask_budget200
+REMARK=prompt_v5_T_9_Len_500_VoidRe_1_ctx_notemplate_voidmask_budget400
 FILTER_RATIO=0.5
-MODEL=Qwen/Qwen3-0.6B
+MODEL=Qwen/Qwen3-8B
 MODEL_SHORT="${MODEL##*/}"
 
 ROLLOUT_MODE="sync"
 if [ "$ROLLOUT_MODE" = "async" ]; then
     export VLLM_USE_V1=1
+else
+    export VLLM_USE_V1=0 
+    ray status >/dev/null 2>&1 || ray start --head
 fi
 
 WANDB_API_KEY="ba70fcbc92808cc7a1750dd80ac3908295e6854f" # Modify your wandb key
@@ -35,6 +38,4 @@ python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     actor_rollout_ref.rollout.max_model_len=15000 \
     actor_rollout_ref.rollout.max_num_batched_tokens=15000 \
     trainer.total_training_steps=400 \
-    critic.optim.lr=5e-7 \
-    actor_rollout_ref.actor.optim.lr=5e-7
     
