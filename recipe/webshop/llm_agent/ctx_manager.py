@@ -1,7 +1,7 @@
 """
 This is the updated context manager for the LLM agent.
 author: Haixin
-date: 2025-08-31
+date: 2025-08-24
 """
 from itertools import zip_longest
 
@@ -24,23 +24,21 @@ register_resolvers()
 def get_special_tokens(tokenizer: AutoTokenizer):
     if "qwen" in tokenizer.name_or_path.lower():
         special_token = tokenizer.encode("<|im_start|>")[0]
-        answer_token = tokenizer.encode("</answer>")[0]
         reward_token = tokenizer.encode("<|im_end|>")[0]
     elif "llama-3" in tokenizer.name_or_path.lower():
         special_token = 128006
-        answer_token = 128009
         reward_token = 128009
     else:
         raise ValueError(f"Unsupported model: {tokenizer.name_or_path}")
-    return special_token, reward_token, answer_token
+    return special_token, reward_token
 
-def get_masks_and_scores(input_ids: torch.Tensor, tokenizer: AutoTokenizer, all_scores: List[List[float]] = None, use_turn_scores: bool = False, enable_response_mask: bool = False):
+def get_masks_and_scores(input_ids: torch.Tensor, tokenizer: AutoTokenizer, all_scores: List[List[float]] = None, use_turn_scores: bool = False, enable_response_mask: bool = False, actions_mask: dict = None):
     """
     input_ids: shape (bsz, seq_len)
     Get loss mask that only learns between <|im_start|>assistant and <|im_end|>. Currently only supports qwen.
     NOTE: important! This assumes that the input_ids starts with system and then user & assistant in alternative ways
     """
-    special_token, reward_token, answer_token = get_special_tokens(tokenizer)
+    special_token, reward_token = get_special_tokens(tokenizer)
     
     turn_starts = torch.where(input_ids == special_token, 1, 0)
     turn_indicators = torch.cumsum(turn_starts, dim=-1)
@@ -68,28 +66,28 @@ def get_masks_and_scores(input_ids: torch.Tensor, tokenizer: AutoTokenizer, all_
 
         gi = group_id[i]       # [T]
         row_input = input_ids[i]
+        
+        if not actions_mask[i]:
+            loss_mask[i] = False
+            continue
 
-        for r in range(nt):
-            idxs_r = gi.eq(r)
-            if not idxs_r.any():
-                continue
 
-            #* check if contains target_id
-            if not (row_input[idxs_r] == answer_token).any():
-                # loss_mask[i][idxs_r] = False  
-                loss_mask[i] = False
-                break 
-            elif (row_input[idxs_r] == int(151668)).any():
-                #* mask tokens before target_id (151668)
-                target_positions = (row_input[idxs_r] == int(151668)).nonzero(as_tuple=True)[0]
-                if len(target_positions) > 0:
-                    # Get the position of the first occurrence of target_id within this turn
-                    first_target_pos = target_positions[0]
-                    # Get the absolute positions for this turn
-                    turn_positions = idxs_r.nonzero(as_tuple=True)[0]
-                    # Mask all positions before the first target_id in this turn
-                    mask_positions = turn_positions[:first_target_pos]
-                    loss_mask[i][mask_positions] = False
+        # for r in range(nt):
+        #     idxs_r = gi.eq(r)
+        #     if not idxs_r.any():
+        #         continue
+
+            # elif (row_input[idxs_r] == int(151668)).any():
+            #     #* mask tokens before target_id (151668)
+            #     target_positions = (row_input[idxs_r] == int(151668)).nonzero(as_tuple=True)[0]
+            #     if len(target_positions) > 0:
+            #         # Get the position of the first occurrence of target_id within this turn
+            #         first_target_pos = target_positions[0]
+            #         # Get the absolute positions for this turn
+            #         turn_positions = idxs_r.nonzero(as_tuple=True)[0]
+            #         # Mask all positions before the first target_id in this turn
+            #         mask_positions = turn_positions[:first_target_pos]
+            #         loss_mask[i][mask_positions] = False
                 
     
     score_tensor = torch.zeros_like(input_ids, dtype=torch.float32)
@@ -281,8 +279,8 @@ class ContextManager:
         """
         llm_input_texts = []
         messages_list = [] # for api calling
-        
-        for env_output in env_outputs:
+        actions_mask={env_id: False for env_id in range(len(env_outputs))}
+        for env_id, env_output in enumerate(env_outputs):
             if 'state' in env_output['history'][-1] and prepare_for_update:
                 env_output['history'] = env_output['history'][:-1] # when prepare for update, we do not add the state from the n+1 turn to the trajectory
             
@@ -333,15 +331,20 @@ class ContextManager:
             #         text += "<answer>" # force the LLM to answer
             llm_input_texts.append(text)
             messages_list.append(messages)
+            if "llm_response" in content:
+                _, actions = self._parse_response(content["llm_response"])
+                if 'click[buy now]' in actions:
+                    actions_mask[env_id] = True
+            
         
-
         inputs = self.tokenizer(llm_input_texts, return_tensors="pt", padding=True, padding_side="left", truncation=False) # do not truncate here. Process later at TODO
         input_ids, attention_mask = inputs.input_ids, inputs.attention_mask
         position_ids = attention_mask.cumsum(dim=-1)
         if prepare_for_update:
             
             scores = [[i.get('reward', 0.0) for i in env_output['history']] for env_output in env_outputs]
-            score_tensor, loss_mask, response_mask = get_masks_and_scores(input_ids, self.tokenizer, scores, use_turn_scores=self.config.agent_proxy.use_turn_scores, enable_response_mask=self.config.enable_response_mask)
+            
+            score_tensor, loss_mask, response_mask = get_masks_and_scores(input_ids, self.tokenizer, scores, use_turn_scores=self.config.agent_proxy.use_turn_scores, enable_response_mask=self.config.enable_response_mask, actions_mask=actions_mask)
             
             normalized_score_tensor = score_tensor
             if not self.config.agent_proxy.use_turn_scores:
