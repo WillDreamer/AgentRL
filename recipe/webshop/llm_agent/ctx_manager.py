@@ -1,7 +1,7 @@
 """
 This is the updated context manager for the LLM agent.
 author: Haixin
-date: 2025-08-24
+date: 2025-08-31
 """
 from itertools import zip_longest
 
@@ -24,13 +24,15 @@ register_resolvers()
 def get_special_tokens(tokenizer: AutoTokenizer):
     if "qwen" in tokenizer.name_or_path.lower():
         special_token = tokenizer.encode("<|im_start|>")[0]
+        answer_token = tokenizer.encode("</answer>")[0]
         reward_token = tokenizer.encode("<|im_end|>")[0]
     elif "llama-3" in tokenizer.name_or_path.lower():
         special_token = 128006
+        answer_token = 128009
         reward_token = 128009
     else:
         raise ValueError(f"Unsupported model: {tokenizer.name_or_path}")
-    return special_token, reward_token
+    return special_token, reward_token, answer_token
 
 def get_masks_and_scores(input_ids: torch.Tensor, tokenizer: AutoTokenizer, all_scores: List[List[float]] = None, use_turn_scores: bool = False, enable_response_mask: bool = False):
     """
@@ -38,7 +40,7 @@ def get_masks_and_scores(input_ids: torch.Tensor, tokenizer: AutoTokenizer, all_
     Get loss mask that only learns between <|im_start|>assistant and <|im_end|>. Currently only supports qwen.
     NOTE: important! This assumes that the input_ids starts with system and then user & assistant in alternative ways
     """
-    special_token, reward_token = get_special_tokens(tokenizer)
+    special_token, reward_token, answer_token = get_special_tokens(tokenizer)
     
     turn_starts = torch.where(input_ids == special_token, 1, 0)
     turn_indicators = torch.cumsum(turn_starts, dim=-1)
@@ -73,7 +75,7 @@ def get_masks_and_scores(input_ids: torch.Tensor, tokenizer: AutoTokenizer, all_
                 continue
 
             #* check if contains target_id
-            if not (row_input[idxs_r] == int(151668)).any() and (row_input[idxs_r] == int(151667)).any():
+            if not (row_input[idxs_r] == answer_token).any():
                 # loss_mask[i][idxs_r] = False  
                 loss_mask[i] = False
                 break 
@@ -89,6 +91,7 @@ def get_masks_and_scores(input_ids: torch.Tensor, tokenizer: AutoTokenizer, all_
                     mask_positions = turn_positions[:first_target_pos]
                     loss_mask[i][mask_positions] = False
                 
+    
     score_tensor = torch.zeros_like(input_ids, dtype=torch.float32)
     if use_turn_scores:
         for idx, scores in enumerate(zip_longest(*all_scores, fillvalue=0)):
@@ -287,57 +290,31 @@ class ContextManager:
             if max_k is not None and isinstance(max_k, int) and max_k > 0:
                 env_output['history'] = env_output['history'][-max_k:]
             
-            #* System prompt (S)
             messages = [
                 {"role": "system", "content": f"You're a helpful assistant. "}
             ]
             text = self.tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
+            
             messages.append({"role": "user", "content": self.prefix_lookup[env_output["env_id"]]})
 
-            context_window = 1
-            turn_num = len(env_output["history"])
-    
             for idx, content in enumerate(env_output["history"]):
-                #* Turn (T)
+                
                 messages[-1]["content"] += f"\nTurn {idx + 1}:\n"
-                if "state" in content:
                     
-                    if idx >= turn_num - context_window:
-                        #* Agent Query (AQ) + Environment (E)
-                        messages[-1]["content"] += f"State:\n{content['state']}\nYou have {content['actions_left']} actions left."
-
-                        #* Principle (P)
-                        FORMAT_PROMPT = "<think> [Your thoughts] </think> <answer> [your answer] </answer>" if self.config.agent_proxy.enable_think else "<answer> [your answer] </answer>"
-                        LENGTH_PROMPT = f"Max response length: {self.env_config_lookup[env_output['env_id']]['max_tokens']} words (tokens)."
-                        P = f"Always output: {FORMAT_PROMPT} with no extra text. Strictly follow this format. {LENGTH_PROMPT}\n"
-                        messages[-1]["content"] += P
-                    else:
-                        state = content['state']
-                        target = 'We must buy a product within 10 actions.'
-                        index = state.find(target)
-                        AQ = state[:index].strip()
-                        messages[-1]["content"] += f"State:\n{AQ}\nYou have {content['actions_left']} actions left."
-
+                if "state" in content:
+                    FORMAT_PROMPT = "<think> [Your thoughts] </think> <answer> [your answer] </answer>" if self.config.agent_proxy.enable_think else "<answer> [your answer] </answer>"
+                    LENGTH_PROMPT = f"Max response length: {self.env_config_lookup[env_output['env_id']]['max_tokens']} words (tokens)."
+                    messages[-1]["content"] += f"State:\n{content['state']}\nYou have {content['actions_left']} actions left. Always output: {FORMAT_PROMPT} with no extra text. Strictly follow this format. {LENGTH_PROMPT}\n"
+                
                 text += self.tokenizer.apply_chat_template([messages[-1]], add_generation_prompt=False, tokenize=False)
 
                 if "llm_response" in content:
-                    #* LLM Response (LR)
-                    if idx >= turn_num - context_window:
-                        llm_response = {"role": "assistant", "content": content["llm_response"]}
-                        messages.append(llm_response)
-                        lm_res_template = "<|im_start|>assistant\n" + content["llm_response"] + "<|im_end|>\n"
-                        text += lm_res_template
-                    else:
-                        llm_res = content["llm_response"]
-                        if '</think>' in llm_res:
-                            llm_res = llm_res.split('</think>')[1].strip()
-                        llm_response = {"role": "assistant", "content": llm_res}
-                        messages.append(llm_response)
-                        lm_res_template = "<|im_start|>assistant\n" + llm_res + "<|im_end|>\n"
-                        text += lm_res_template
-                        
+                    llm_response = {"role": "assistant", "content": content["llm_response"]}
+                    messages.append(llm_response)
 
-                #* Information (I)
+                    lm_res_template = "<|im_start|>assistant\n" + content["llm_response"] + "<|im_end|>\n"
+                    
+                    text += lm_res_template
                 if "reward" in content and not (prepare_for_update and idx == len(env_output["history"]) - 1):
                     # when prepare for update, we do not add the reward from the n+1 turn to the trajectory
                     reward_info = {"role": "user", "content": f"Reward:\n{content['reward']}\n"}
@@ -345,10 +322,15 @@ class ContextManager:
             
             if not prepare_for_update:
                 text += f"<|im_start|>assistant\n"     
-            
             # NOTE: this assertion is important for loss mask computation        
             assert all(msg["role"] == "assistant" for msg in messages[2::2])
 
+            # text = self.tokenizer.apply_chat_template(messages, add_generation_prompt=(not prepare_for_update), tokenize=False)
+            # if not prepare_for_update:
+            #     if self.config.agent_proxy.enable_think:
+            #         text += "<think>" # force the LLM to think before answering
+            #     else:
+            #         text += "<answer>" # force the LLM to answer
             llm_input_texts.append(text)
             messages_list.append(messages)
         
