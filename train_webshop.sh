@@ -29,6 +29,7 @@ python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     system.CUDA_VISIBLE_DEVICES=\"0,1,2,3,4,5,6,7\" \
     actor_rollout_ref.model.path=$MODEL \
     critic.model.path=$MODEL \
+    model_path=$MODEL \
     actor_rollout_ref.rollout.rollout_filter_ratio=$FILTER_RATIO \
     agent_proxy.max_turn=9 \
     custom_envs.WebShop.max_actions_per_traj=9 \
