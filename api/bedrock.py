@@ -101,7 +101,7 @@ class AnthropicModel(BedRockModel):
                 return process_response(response)
             except:
                 retry -= 1
-                time.sleep(50/retry)
+                time.sleep(50/(retry+1))
                 if retry == 0:
                     return None
 

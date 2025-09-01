@@ -161,24 +161,26 @@ class EnvStateManager_Bedrock:
         env_outputs = []
 
         for env_input in all_env_inputs:
-            acc_reward, turn_info, turn_done = 0, {}, False
-            entry = envs[env_input['env_id']]
-            env_id, env = entry['env_id'], entry['env']
-            actions_left_before = entry['max_actions_per_traj'] - entry['status'].num_actions
-
-            # execute actions in envs
-            valid_actions = self._extract_map_valid_actions(entry, env_input['actions'])
-            acc_reward, turn_info, turn_done, executed_actions = _execute_actions(env, valid_actions[:actions_left_before])
-            if len(valid_actions) != len(env_input['actions']) or not valid_actions:
-                self.rollout_cache[env_id]["penalty"] += self.sys_config.es_manager.format_penalty
+            if env_input['llm_response']!="":
                 
-            status, history = _log_env_state(entry['status'], self.rollout_cache[env_id]['history'], entry['env'].render(), entry['max_actions_per_traj'], executed_actions, valid_actions, acc_reward, turn_done, turn_info, env_input)
-            entry['status'] = status
-            if entry['status'].num_actions >= entry['max_actions_per_traj'] and not turn_done:
-                entry['status'].truncated = True
-                entry['status'].terminated = True
-                turn_done = True
-            self.rollout_cache[env_id]['history'] = history
+                acc_reward, turn_info, turn_done = 0, {}, False
+                entry = envs[env_input['env_id']]
+                env_id, env = entry['env_id'], entry['env']
+                actions_left_before = entry['max_actions_per_traj'] - entry['status'].num_actions
+
+                # execute actions in envs
+                valid_actions = self._extract_map_valid_actions(entry, env_input['actions'])
+                acc_reward, turn_info, turn_done, executed_actions = _execute_actions(env, valid_actions[:actions_left_before])
+                if len(valid_actions) != len(env_input['actions']) or not valid_actions:
+                    self.rollout_cache[env_id]["penalty"] += self.sys_config.es_manager.format_penalty
+                
+                status, history = _log_env_state(entry['status'], self.rollout_cache[env_id]['history'], entry['env'].render(), entry['max_actions_per_traj'], executed_actions, valid_actions, acc_reward, turn_done, turn_info, env_input)
+                entry['status'] = status
+                if entry['status'].num_actions >= entry['max_actions_per_traj'] and not turn_done:
+                    entry['status'].truncated = True
+                    entry['status'].terminated = True
+                    turn_done = True
+                self.rollout_cache[env_id]['history'] = history
             if not turn_done: # NOTE done environments are not sent for further llm generation (for efficiency)
                 env_outputs.append(self.rollout_cache[env_id])
 

@@ -1,14 +1,9 @@
 from .ctx_manager_bedrock import ContextManager_Bedrock
 from .es_manager_bedrock import EnvStateManager_Bedrock
-from vllm import LLM, SamplingParams
-from verl.single_controller.ray.base import RayWorkerGroup
-from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
 from verl import DataProto
-import hydra
-import os
 from typing import List, Dict
-from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
-from .base_llm import ConcurrentLLM
+import torch
 # import time
 
 class LLMAgentProxy_Bedrock:
@@ -26,17 +21,24 @@ class LLMAgentProxy_Bedrock:
 		ctx_manager = self.train_ctx_manager
 		env_outputs = es_manager.reset()
 
+		response_mask = torch.zeros(len(env_outputs), self.config.agent_proxy.max_turn)
+
 		for i in range(self.config.agent_proxy.max_turn):
 			lm_inputs = ctx_manager.get_lm_inputs(env_outputs, prepare_for_update=False)
 			
 			lm_outputs = {}
-			for x in lm_inputs:
+			for idx, x in enumerate(lm_inputs):
+				if response_mask[idx].sum() > 0:
+					lm_outputs[x] = None
+					continue
 				response = self.model.respond(
 					[lm_inputs[x][-1]],
 					max_tokens=512,
 					max_context_size=15000
 				)
 				lm_outputs[x] = response
+				if 'click[buy now]' in response:
+					response_mask[idx, i] = 1
 
 			env_inputs: List[Dict] = ctx_manager.get_env_inputs(lm_outputs)
 			env_outputs: List[Dict] = es_manager.step(env_inputs)
