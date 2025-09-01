@@ -104,6 +104,12 @@ bash train_ragen.sh
 > ### 🛒 **Shopping Agents**
 
 ```bash
+# Behavior Cloning, call bedrock api to collect data
+python recipe/webshop/data_sft.py
+
+```
+
+```bash
 # 1. Build the webshop environments
 bash recipe/webshop/setup_webshop.sh
 
