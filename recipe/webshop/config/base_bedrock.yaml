@@ -124,7 +124,7 @@ es_manager:
     group_size: 1
     env_configs:
       tags: ["WebShop"]
-      n_groups: [2] # If not set, all env names divide nums equally. Under the same group, the env config and env seed (prompt) are equal in each generation
+      n_groups: [500] # If not set, all env names divide nums equally. Under the same group, the env config and env seed (prompt) are equal in each generation
   val:
     env_groups: 256
     group_size: 1 # should be set to 1 because when val temperature is set to 0 and group size > 1, there will be repetitive prompts which leads to same trajectory.
