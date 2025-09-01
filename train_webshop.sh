@@ -16,6 +16,8 @@ fi
 
 python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     model_path=$MODEL \
+    actor_rollout_ref.model.path=$MODEL \
+    critic.model.path=$MODEL \
     system.CUDA_VISIBLE_DEVICES=\"0,1,2,3,4,5,6,7\" \
     actor_rollout_ref.rollout.rollout_filter_ratio=$FILTER_RATIO \
     trainer.experiment_name="${TASK_NAME}-${REMARK}-ppo-filter${FILTER_RATIO}-${MODEL_SHORT}" \
