@@ -161,12 +161,13 @@ class EnvStateManager_Bedrock:
         env_outputs = []
 
         for env_input in all_env_inputs:
+
+            acc_reward, turn_info, turn_done = 0, {}, False
+            entry = envs[env_input['env_id']]
+            env_id, env = entry['env_id'], entry['env']
+            actions_left_before = entry['max_actions_per_traj'] - entry['status'].num_actions
+            
             if env_input['llm_response']!="":
-                
-                acc_reward, turn_info, turn_done = 0, {}, False
-                entry = envs[env_input['env_id']]
-                env_id, env = entry['env_id'], entry['env']
-                actions_left_before = entry['max_actions_per_traj'] - entry['status'].num_actions
 
                 # execute actions in envs
                 valid_actions = self._extract_map_valid_actions(entry, env_input['actions'])

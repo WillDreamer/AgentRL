@@ -37,8 +37,9 @@ class LLMAgentProxy_Bedrock:
 					max_context_size=15000
 				)
 				lm_outputs[x] = response
-				if 'click[buy now]' in response:
-					response_mask[idx, i] = 1
+				if response is not None:
+					if 'click[buy now]' in response:
+						response_mask[idx, i] = 1
 
 			env_inputs: List[Dict] = ctx_manager.get_env_inputs(lm_outputs)
 			env_outputs: List[Dict] = es_manager.step(env_inputs)

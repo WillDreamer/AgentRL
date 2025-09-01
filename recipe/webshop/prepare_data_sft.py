@@ -18,7 +18,6 @@ def main(config):
 	# detect config name from python -m webshop.llm_agent.agent_proxy --config_name frozen_lake
 	os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
 	os.environ["CUDA_VISIBLE_DEVICES"] = str(config.system.CUDA_VISIBLE_DEVICES)
-	tokenizer = AutoTokenizer.from_pretrained(config.actor_rollout_ref.model.path)
 
 	model_name = 'anthropic.claude-3-5-sonnet-20240620-v1:0'
 	region = 'us-east-1'
@@ -27,13 +26,16 @@ def main(config):
 	import time
 	start_time = time.time()
 	rollouts, metrics = proxy.rollout(val=False)
-	breakpoint()
+	success = metrics['WebShop/success']
+	# save rollout and success to json file
+	import json
+	with open('rollout_1500_2000.json', 'w') as f:
+		json.dump({'rollout': rollouts, 'success': success}, f)
+
+
 	end_time = time.time()
 	print(f'rollout time: {end_time - start_time} seconds')
-	# print rollout rewards from the rm_scores
-	print(f'metrics:')
-	for k, v in metrics.items():
-		print(f'{k}: {v}')
+	
 
 if __name__ == "__main__":
 	main()
