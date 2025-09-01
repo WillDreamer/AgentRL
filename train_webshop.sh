@@ -3,7 +3,7 @@ set -e
 TASK_NAME=_webshop
 FILTER_RATIO=0.5
 REMARK=Pv5-Turn_9-Len_720-VoidRe_1-ctx_last_think-voidmask-budget_600-action_filter_${FILTER_RATIO}
-MODEL=Qwen/Qwen3-0.6B
+MODEL=Qwen/Qwen3-4B
 MODEL_SHORT="${MODEL##*/}"
 
 ROLLOUT_MODE="sync"
