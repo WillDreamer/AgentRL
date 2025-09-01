@@ -4,6 +4,7 @@ import os
 import openai
 import boto3
 import argparse
+import time
 
 class ModelBase:
 
@@ -92,16 +93,17 @@ class AnthropicModel(BedRockModel):
             "max_tokens": max_tokens,
             "anthropic_version": "bedrock-2023-05-31"
         }
-        retry = 3
+        retry = 8
         while retry > 0:
             try:
                 response = self.bedrock.invoke_model(body=json.dumps(payload),
                                                     modelId=self.model_name)
                 return process_response(response)
-            except Exception as e:
+            except:
                 retry -= 1
+                time.sleep(50/retry)
                 if retry == 0:
-                    raise e
+                    return None
 
 
 class DeepseekModel(BedRockModel):
