@@ -48,7 +48,9 @@ actor_rollout_ref:
     free_cache_engine: True
     val_kwargs:
       do_sample: True
-      temperature: 0.5
+      temperature: 0.6
+      top_k: 20
+      top_p: 0.95
     tp_size_check: True
 
 critic:
@@ -89,7 +91,7 @@ trainer:
   generations_to_log_to_wandb: 
     train: 128 # TODO: will be implemented
     val: 20
-  logger: [ 'console', 'wandb' ]
+  logger: [ 'console']
 
 agent_proxy:
   max_context_window: -1 # set a value > 0 to enable context window for long trajectory

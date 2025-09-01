@@ -289,41 +289,26 @@ class ContextManager:
                 env_output['history'] = env_output['history'][-max_k:]
             
             messages = [
-                {"role": "system", "content": f"You're a helpful assistant. "}
+                {"role": "system", "content": f"You're a helpful assistant. {self.prefix_lookup[env_output['env_id']]}"}, 
+                {"role": "user", "content": "\n"}
             ]
-            text = self.tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
-            
-            messages.append({"role": "user", "content": self.prefix_lookup[env_output["env_id"]]})
 
             for idx, content in enumerate(env_output["history"]):
-                
-                messages[-1]["content"] += f"\nTurn {idx + 1}:\n"
-                    
+                messages[-1]["content"] += f"Turn {idx + 1}:\n"
                 if "state" in content:
                     FORMAT_PROMPT = "<think> [Your thoughts] </think> <answer> [your answer] </answer>" if self.config.agent_proxy.enable_think else "<answer> [your answer] </answer>"
-                    LENGTH_PROMPT = f"Max response length: {self.env_config_lookup[env_output['env_id']]['max_tokens']} words (tokens)."
-                    messages[-1]["content"] += f"State:\n{content['state']}\nYou have {content['actions_left']} actions left. Always output: {FORMAT_PROMPT} with no extra text. Strictly follow this format. {LENGTH_PROMPT}\n"
-                
-                text += self.tokenizer.apply_chat_template([messages[-1]], add_generation_prompt=False, tokenize=False)
-
+                    messages[-1]["content"] += f"State:\n{content['state']}\nYou have {content['actions_left']} actions left. Always output: {FORMAT_PROMPT} with no extra text.\n"
                 if "llm_response" in content:
-                    llm_response = {"role": "assistant", "content": content["llm_response"]}
-                    messages.append(llm_response)
-
-                    lm_res_template = "<|im_start|>assistant\n" + content["llm_response"] + "<|im_end|>\n"
-                    
-                    text += lm_res_template
+                    messages.append({"role": "assistant", "content": content["llm_response"]})
                 if "reward" in content and not (prepare_for_update and idx == len(env_output["history"]) - 1):
                     # when prepare for update, we do not add the reward from the n+1 turn to the trajectory
-                    reward_info = {"role": "user", "content": f"Reward:\n{content['reward']}\n"}
-                    messages.append(reward_info)
-            
-            if not prepare_for_update:
-                text += f"<|im_start|>assistant\n"     
+                    messages.append({"role": "user", "content": f"Reward:\n{content['reward']}\n"})
+
             # NOTE: this assertion is important for loss mask computation        
             assert all(msg["role"] == "assistant" for msg in messages[2::2])
+            
 
-            # text = self.tokenizer.apply_chat_template(messages, add_generation_prompt=(not prepare_for_update), tokenize=False)
+            text = self.tokenizer.apply_chat_template(messages, add_generation_prompt=(not prepare_for_update), tokenize=False)
             # if not prepare_for_update:
             #     if self.config.agent_proxy.enable_think:
             #         text += "<think>" # force the LLM to think before answering
@@ -331,7 +316,7 @@ class ContextManager:
             #         text += "<answer>" # force the LLM to answer
             llm_input_texts.append(text)
             messages_list.append(messages)
-            if "llm_response" in content:
+            if prepare_for_update and "llm_response" in content:
                 _, actions = self._parse_response(content["llm_response"])
                 if 'click[buy now]' in actions:
                     actions_mask[env_id] = True
@@ -341,7 +326,6 @@ class ContextManager:
         input_ids, attention_mask = inputs.input_ids, inputs.attention_mask
         position_ids = attention_mask.cumsum(dim=-1)
         if prepare_for_update:
-            
             scores = [[i.get('reward', 0.0) for i in env_output['history']] for env_output in env_outputs]
             
             score_tensor, loss_mask, response_mask = get_masks_and_scores(input_ids, self.tokenizer, scores, use_turn_scores=self.config.agent_proxy.use_turn_scores, enable_response_mask=self.config.enable_response_mask, actions_mask=actions_mask)
@@ -350,7 +334,6 @@ class ContextManager:
             if not self.config.agent_proxy.use_turn_scores:
                 normalized_score_tensor = self._normalize_score_tensor(score_tensor, env_outputs)
             response_length = response_mask.sum(dim=-1).float().mean().item()
-
 
         llm_inputs = DataProto()
         llm_inputs.batch = TensorDict({
@@ -363,6 +346,7 @@ class ContextManager:
         if prepare_for_update:
             llm_inputs.batch["loss_mask"] = loss_mask # remove the first token
             llm_inputs.batch["rm_scores"] = normalized_score_tensor # remove the first token
+            llm_inputs.batch["actions_mask"] = np.array(list(actions_mask.values()))
             llm_inputs.batch["original_rm_scores"] = score_tensor # remove the first token
         llm_inputs.non_tensor_batch = {
             "env_ids": np.array([env_output["env_id"] for env_output in env_outputs], dtype=object),

@@ -439,15 +439,6 @@ class RayAgentTrainer(VerlRayPPOTrainer):
         # load checkpoint before doing anything
         self._load_checkpoint()
 
-        # perform validation before training
-        # currently, we only support validation using the reward_function.
-        # if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
-        #     val_metrics = self._validate()
-        #     pprint(f"Initial validation metrics: {val_metrics}")
-        #     logger.log(data=val_metrics, step=self.global_steps)
-        #     if self.config.trainer.get("val_only", False):
-        #         return
-
         # add tqdm
         progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")
 
@@ -468,24 +459,30 @@ class RayAgentTrainer(VerlRayPPOTrainer):
             num_groups, group_size = self.config.es_manager.train.env_groups, self.config.es_manager.train.group_size
 
             rm_scores = batch.batch["original_rm_scores"].sum(dim=-1).view(num_groups, group_size)
+            actions_mask = batch.batch['actions_mask'].view(num_groups, group_size)
+            actions_group_sum = actions_mask.sum(dim=-1)
+            top_groups = actions_group_sum.topk(int(rollout_filter_ratio * num_groups)).indices
+
             in_group_std = rm_scores.std(dim=-1)
             in_group_max = rm_scores.max(dim=-1).values
             in_group_mean = rm_scores.mean(dim=-1)
             if rollout_filter_ratio == 1:
                 return batch, {"rollout/in_group_std": in_group_std.mean(), "rollout/in_group_max": in_group_max.mean(), "rollout/in_group_mean": in_group_mean.mean(), "rollout/chosen_in_group_std": in_group_std.mean(), "rollout/chosen_in_group_max": in_group_max.mean(), "rollout/chosen_in_group_mean": in_group_mean.mean()}
 
-            if self.config.actor_rollout_ref.rollout.rollout_filter_type == "std_rev":
-                top_groups = (-in_group_std).topk(int(rollout_filter_ratio * num_groups)).indices
-            elif self.config.actor_rollout_ref.rollout.rollout_filter_type == "std":
-                top_groups = in_group_std.topk(int(rollout_filter_ratio * num_groups)).indices
-            else:
-                raise ValueError(f"Invalid rollout filter type: {self.config.actor_rollout_ref.rollout.rollout_filter_type}")
+            # if self.config.actor_rollout_ref.rollout.rollout_filter_type == "std_rev":
+            #     top_groups = (-in_group_std).topk(int(rollout_filter_ratio * num_groups)).indices
+            # elif self.config.actor_rollout_ref.rollout.rollout_filter_type == "std":
+            #     top_groups = in_group_std.topk(int(rollout_filter_ratio * num_groups)).indices
+            # else:
+            #     raise ValueError(f"Invalid rollout filter type: {self.config.actor_rollout_ref.rollout.rollout_filter_type}")
 
             mask = torch.zeros(num_groups, dtype=torch.bool)
             mask[top_groups] = True
             mask = mask.unsqueeze(1).expand(-1, group_size).flatten()
 
             batch.batch = batch.batch[mask]
+
+            
 
             for key, value in batch.non_tensor_batch.items():
                 if isinstance(value, np.ndarray):

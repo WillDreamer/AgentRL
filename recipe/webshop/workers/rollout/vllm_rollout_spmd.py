@@ -263,7 +263,7 @@ class vLLMRollout(BaseRollout):
         kwargs["n"] = 1  # already repeat in ray_trainer
         print(f"kwargs: {kwargs}")
         self.sampling_params = SamplingParams(
-            logits_processors=[ThinkLogitsProcessor(num_think_tokens=300)],
+            logits_processors=[ThinkLogitsProcessor(num_think_tokens=600)],
             **kwargs)
 
         self.pad_token_id = tokenizer.pad_token_id

@@ -1,9 +1,9 @@
 set -e
 
 TASK_NAME=_webshop
-REMARK=prompt_v5_T_9_Len_500_VoidRe_1_ctx_notemplate_voidmask_budget400
 FILTER_RATIO=0.5
-MODEL=Qwen/Qwen3-8B
+REMARK=Pv5-Turn_9-Len_720-VoidRe_1-ctx_last_think-voidmask-budget_600-action_filter_${FILTER_RATIO}
+MODEL=Qwen/Qwen3-0.6B
 MODEL_SHORT="${MODEL##*/}"
 
 ROLLOUT_MODE="sync"
@@ -23,7 +23,7 @@ if [ "$WANDB_API_KEY" != "" ]; then
 fi
 
 python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
-    trainer.experiment_name="${TASK_NAME}-${REMARK}-ppo-filter${FILTER_RATIO}-${MODEL_SHORT}" \
+    trainer.experiment_name="${TASK_NAME}-${REMARK}-ppo-${MODEL_SHORT}" \
     trainer.nnodes=1 \
     trainer.rollout_data_dir=log_rollout \
     system.CUDA_VISIBLE_DEVICES=\"0,1,2,3,4,5,6,7\" \
@@ -37,7 +37,7 @@ python -m recipe.webshop.main_webshop --config-name $TASK_NAME \
     critic.ppo_mini_batch_size=64 \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.mode=$ROLLOUT_MODE \
-    actor_rollout_ref.rollout.response_length=500 \
+    actor_rollout_ref.rollout.response_length=720 \
     actor_rollout_ref.rollout.max_model_len=15000 \
     actor_rollout_ref.rollout.max_num_batched_tokens=15000 \
     trainer.total_training_steps=400 \
