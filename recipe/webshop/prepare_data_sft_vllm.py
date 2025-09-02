@@ -10,6 +10,7 @@ import os
 from typing import List, Dict
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 from recipe.webshop.llm_agent.base_llm import ConcurrentLLM
+import json
 from recipe.webshop.llm_agent.agent_proxy_old import ApiCallingWrapperWg, VllmWrapperWg, LLMAgentProxy
 
 @hydra.main(version_base=None, config_path="./config", config_name="base_eval")
@@ -26,14 +27,14 @@ def main(config):
 
 	end_time = time.time()
 	print(f'rollout time: {end_time - start_time} seconds')
-	breakpoint()
+
 	# print rollout rewards from the rm_scores
 	rm_scores = rollouts.batch["rm_scores"].sum(-1)
 	mask = rm_scores > 0.99
 	rollouts_saved = rollouts.non_tensor_batch["messages_list"][mask]
 
 	# save rollouts_saved to json
-	with open('rollouts_saved.json', 'w') as f:
+	with open('rollouts_saved_1500_1800_vllm.json', 'w') as f:
 		json.dump(rollouts_saved, f)
 
 
