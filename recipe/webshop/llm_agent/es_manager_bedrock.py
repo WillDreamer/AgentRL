@@ -10,8 +10,8 @@ import hydra
 import random
 import numpy as np
 
-from recipe.ragen.env import REGISTERED_ENVS, REGISTERED_ENV_CONFIGS
-from recipe.ragen.utils import register_resolvers
+from recipe.webshop.env import REGISTERED_ENVS, REGISTERED_ENV_CONFIGS
+from recipe.webshop.utils import register_resolvers
 register_resolvers()
 
 @dataclass
