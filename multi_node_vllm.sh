@@ -121,9 +121,9 @@ esac
 
 
 ### vllm_multi_node
+# conda create -n vllm python==3.12 -y
+# conda activate vllm
 # python3 -m pip install uv
-# uv venv --python 3.12 --seed
-# source .venv/bin/activate
 # uv pip install --pre vllm==0.10.1+gptoss \
 #     --extra-index-url https://wheels.vllm.ai/gpt-oss/ \
 #     --extra-index-url https://download.pytorch.org/whl/nightly/cu128 \
@@ -134,3 +134,5 @@ esac
 
 # second node:
 # bash multi_node_vllm.sh worker --ray_address=10.3.57.128 --ray_port=6379
+
+# vllm serve openai/gpt-oss-20b
