@@ -35,7 +35,7 @@ def main(config):
 
 	# save rollouts_saved to json
 	with open('rollouts_saved_1500_1800_vllm.json', 'w') as f:
-		json.dump(rollouts_saved, f)
+		json.dump(rollouts_saved.tolist(), f)
 
 
 	
