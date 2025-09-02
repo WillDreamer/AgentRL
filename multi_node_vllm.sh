@@ -121,6 +121,7 @@ esac
 
 
 ### vllm_multi_node
+# python3 -m pip install uv
 # uv venv --python 3.12 --seed
 # source .venv/bin/activate
 # uv pip install --pre vllm==0.10.1+gptoss \
