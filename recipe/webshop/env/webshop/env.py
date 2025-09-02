@@ -104,7 +104,7 @@ class WebShopEnv(BaseLanguageBasedEnv, WebAgentTextEnv):
         elif mode == "val":
             goal_idx = seed % 1000 + 500
         elif mode == "train":
-            goal_idx = seed % (2000 - 1500) + 1500
+            goal_idx = seed % (len(self.server.goals) - 1500) + 1500
         session = self._get_permuted_index(goal_idx) if session is None else session
         obs, _ = WebAgentTextEnv.reset(self, session=session, instruction_text=instruction_text)
         self.prepare_render_cache(WebAgentTextEnv.get_instruction_text(self))
