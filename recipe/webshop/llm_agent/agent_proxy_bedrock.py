@@ -4,7 +4,7 @@ import torch
 from verl import DataProto
 from typing import List, Dict
 import torch
-# import time
+import time
 
 class LLMAgentProxy_Bedrock:
 	"""
@@ -13,6 +13,12 @@ class LLMAgentProxy_Bedrock:
 	def __init__(self, config, model):
 		self.config = config
 		self.model = model
+		if isinstance(self.model, str):
+			from openai import OpenAI
+			self.client = OpenAI(
+					base_url="http://localhost:8000/v1",
+					api_key="EMPTY"
+				)
 		self.train_ctx_manager = ContextManager_Bedrock(config, mode="train")
 		self.train_es_manager = EnvStateManager_Bedrock(config, mode="train")
 
@@ -31,11 +37,28 @@ class LLMAgentProxy_Bedrock:
 				if response_mask[idx].sum() > 0:
 					lm_outputs[x] = None
 					continue
-				response = self.model.respond(
-					[lm_inputs[x][-1]],
-					max_tokens=512,
-					max_context_size=15000
-				)
+				if isinstance(self.model, str):
+					retry = 8
+					while retry > 0:
+						try:
+							response = self.client.chat.completions.create(
+								model=self.model,
+								messages=[
+									lm_inputs[x][-1]
+								]
+							)
+						except:
+							retry -= 1
+							time.sleep(50/(retry+1))
+							if retry == 0:
+								return None
+
+				else:
+					response = self.model.respond(
+						[lm_inputs[x][-1]],
+						max_tokens=512,
+						max_context_size=15000
+					)
 				lm_outputs[x] = response
 				if response is not None:
 					if 'click[buy now]' in response:
