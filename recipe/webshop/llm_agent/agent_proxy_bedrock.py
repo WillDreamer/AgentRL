@@ -41,12 +41,14 @@ class LLMAgentProxy_Bedrock:
 					retry = 8
 					while retry > 0:
 						try:
-							response = self.client.chat.completions.create(
+							result = self.client.chat.completions.create(
 								model=self.model,
 								messages=[
 									lm_inputs[x][-1]
 								]
 							)
+							response = result.choices[0].message.content
+							break
 						except:
 							retry -= 1
 							time.sleep(50/(retry+1))
