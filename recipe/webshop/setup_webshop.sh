@@ -9,7 +9,7 @@ sudo apt update
 sudo apt install default-jdk
 conda install -c conda-forge openjdk=21 maven -y
 
-git clone https://github.com/ZihanWang314/webshop-minimal.git
+git clone https://github.com/WillDreamer/webshop-minimal.git
 
 # webshop installation, model loading
 pip install -e webshop-minimal/ --no-dependencies
