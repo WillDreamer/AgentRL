@@ -14,7 +14,7 @@ conda install -c conda-forge openjdk=21 maven -y
 
 pip install -r requirements_webshop.txt
 
-git clone https://github.com/ZihanWang314/webshop-minimal.git
+git clone https://github.com/WillDreamer/webshop-minimal.git
 
 # webshop installation, model loading
 pip install -e webshop-minimal/ --no-dependencies
