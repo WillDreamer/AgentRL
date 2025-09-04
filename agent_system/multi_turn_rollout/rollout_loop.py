@@ -348,7 +348,10 @@ class TrajectoryCollector:
             batch.non_tensor_batch['uid'] = uid_batch
             batch.non_tensor_batch['traj_uid'] = traj_uid
 
+            breakpoint()
+
             batch = batch.union(batch_output)
+
             
             text_actions = self.tokenizer.batch_decode(batch.batch['responses'], skip_special_tokens=True)
             
