@@ -1,11 +1,12 @@
 set -x
+ulimit -n 131072
 export MKL_THREADING_LAYER=GNU
 unset MKL_SERVICE_FORCE_INTEL
 ENGINE=${1:-vllm}
 # export VLLM_ATTENTION_BACKEND=XFORMERS
 export VLLM_ATTENTION_BACKEND=FLASH_ATTENTION_2   # 首选
 
-num_cpus_per_env_worker=0.5 # The CPU resource allocated for each environment worker. If you want to use less CPU resources, you can decrease this value.
+num_cpus_per_env_worker=0.2 # The CPU resource allocated for each environment worker. If you want to use less CPU resources, you can decrease this value.
 
 train_data_size=16
 val_data_size=128
@@ -50,7 +51,7 @@ python3 -m recipe.shop_agent.main_shop_agent \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=$ENGINE \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
@@ -59,7 +60,7 @@ python3 -m recipe.shop_agent.main_shop_agent \
     actor_rollout_ref.rollout.free_cache_engine=False \
     actor_rollout_ref.rollout.val_kwargs.temperature=0.6 \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=16 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=False \
     use_invalid_action_penalty=True \
     invalid_action_penalty_coef=0.1 \
