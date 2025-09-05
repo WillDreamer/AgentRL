@@ -25,4 +25,5 @@ train==0.0.5
 transformers==4.51.1
 pydantic==2.10.6
 Werkzeug==2.1.0
+python-Levenshtein
 boto3

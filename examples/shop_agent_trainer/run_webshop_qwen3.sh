@@ -4,7 +4,7 @@ export MKL_THREADING_LAYER=GNU
 unset MKL_SERVICE_FORCE_INTEL
 ENGINE=${1:-vllm}
 # export VLLM_ATTENTION_BACKEND=XFORMERS
-export VLLM_ATTENTION_BACKEND=FLASH_ATTENTION_2   # 首选
+# export VLLM_ATTENTION_BACKEND=FLASH_ATTENTION_2   # 首选
 
 num_cpus_per_env_worker=0.2 # The CPU resource allocated for each environment worker. If you want to use less CPU resources, you can decrease this value.
 
@@ -15,7 +15,7 @@ mode="mean_norm" # "mean_norm" or "mean_std_norm"
 
 MODEL=Qwen/Qwen3-4B
 MODEL_SHORT="${MODEL##*/}"
-experiment_name="gigpo_${MODEL_SHORT}_no_kl"
+experiment_name="gigpo_${MODEL_SHORT}_no_kl_verl0.5"
 
 WANDB_API_KEY="ba70fcbc92808cc7a1750dd80ac3908295e6854f" # Modify your wandb key
 # ============================ Preparation ============================
@@ -45,14 +45,14 @@ python3 -m recipe.shop_agent.main_shop_agent \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=64 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
     actor_rollout_ref.rollout.name=$ENGINE \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
@@ -83,4 +83,4 @@ python3 -m recipe.shop_agent.main_shop_agent \
     trainer.save_freq=-1 \
     trainer.test_freq=5 \
     trainer.total_epochs=150 \
-    trainer.val_before_train=True $@
+    trainer.val_before_train=False $@

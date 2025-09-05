@@ -27,6 +27,13 @@ from agent_system.environments import EnvironmentManagerBase
 from typing import List, Dict
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 
+def drop_timing(x):
+    if "timing" in x.meta_info:
+        mi = dict(x.meta_info)
+        mi.pop("timing")
+        x.meta_info = mi
+    return x
+
 class TrajectoryCollector:
     def __init__(self, config, tokenizer: PreTrainedTokenizer, processor=None):
         """
@@ -348,7 +355,8 @@ class TrajectoryCollector:
             batch.non_tensor_batch['uid'] = uid_batch
             batch.non_tensor_batch['traj_uid'] = traj_uid
 
-            breakpoint()
+            batch_output = drop_timing(batch_output)
+            batch = drop_timing(batch)
 
             batch = batch.union(batch_output)
 
