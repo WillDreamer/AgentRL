@@ -513,6 +513,7 @@ class TaskRunner:
         self.role_worker_mapping = {}
         self.mapping = {}
     
+    
     def add_actor_rollout_worker(self, config):
         """Add actor rollout worker based on the actor strategy."""
         from verl.single_controller.ray import RayWorkerGroup

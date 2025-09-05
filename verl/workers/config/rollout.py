@@ -171,3 +171,5 @@ class RolloutConfig(BaseConfig):
     rollout_filter_type: str = "std"
 
     tp_size_check: bool = True
+    
+    num_think_tokens: int = 500
