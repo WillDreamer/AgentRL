@@ -67,6 +67,8 @@ pip install -r requirements_xxx.txts
 
 🔹 All of the methods utilized is in `recipe`, you can warp the verl worker for your code to join our codebase. The folder under `recipe` can represent either a method for different tasks or a series methods for one task. You can refer to [Easy Extension](docs/extension.md) for examples.
 
+🔹 All of the environments utilized is in `agent_system`, you can warp the env for your code to join our codebase.
+
 🔹 Add specific dependencies to `requirements_xxx.txt`
 
 🔹 Feel free to add the folder of the third-party tools, e.g., `AgentRL/sandbox` for code implementation.
@@ -84,7 +86,7 @@ pip install -r requirements_xxx.txts
 ```bash
 # 3. Run the demo code with:
 conda activate verl
-bash train_simpletir.sh
+bash examples/simpletir_trainer/train_simpletir.sh
 ```
 
 > ### 🎮 **OpenAI Game**
@@ -98,7 +100,7 @@ pip install -r requirements_ragen.txt
 python recipe/ragen/download_data.py
 
 # 3. Run the demo code with:
-bash train_ragen.sh
+bash examples/ragen_trainer/train_ragen.sh
 ```
 
 > ### 🛒 **Shopping Agents**
@@ -115,7 +117,7 @@ bash recipe/webshop/setup_webshop.sh
 
 # 2. Run the demo code with:
 conda activate verl
-bash train_webshop.sh
+bash examples/ragen_trainer/train_webshop.sh
 ```
 
 > ### 🕸️ **Search Agents**
@@ -128,7 +130,7 @@ bash recipe/search_r1/setup_search.sh
 bash recipe/search_r1/rag_server/launch.sh
 
 # 3. Run the demo code with:
-bash train_search.sh
+bash examples/search_r1_trainer/train_search.sh
 ```
 
 ## 📊 Further Analysis
